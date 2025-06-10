@@ -1,8 +1,8 @@
 
-import { VoiceChat } from "@/components/VoiceChat";
+import { StreamingVoiceChat } from "@/components/StreamingVoiceChat";
 
 const Index = () => {
-  return <VoiceChat />;
+  return <StreamingVoiceChat />;
 };
 
 export default Index;
