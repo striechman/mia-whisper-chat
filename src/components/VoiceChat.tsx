@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
@@ -146,17 +147,34 @@ export function VoiceChat() {
         console.log('✅ Microphone started successfully');
       } catch (micError) {
         console.error('❌ Microphone error:', micError);
-        throw new Error(`Microphone access failed: ${micError.message}`);
+        toast({
+          title: "Microphone Error",
+          description: "Could not access microphone. Please check permissions.",
+          variant: "destructive"
+        });
+        return;
       }
       
       // Step 2: Start tab capture for MIA
       console.log('Step 2: Starting tab capture...');
+      toast({
+        title: "Tab Selection Required",
+        description: "Please select the tab where MIA is running when the browser asks.",
+      });
+      
       try {
         await startTabCapture();
         console.log('✅ Tab capture started successfully');
       } catch (tabError) {
         console.error('❌ Tab capture error:', tabError);
-        throw new Error(`Tab capture failed: ${tabError.message}`);
+        toast({
+          title: "Tab Capture Error",
+          description: "Could not capture MIA's tab. Make sure to select the correct tab and grant permissions.",
+          variant: "destructive"
+        });
+        // Stop microphone if tab capture failed
+        stopMicrophone();
+        return;
       }
       
       setIsListening(true);
@@ -170,7 +188,7 @@ export function VoiceChat() {
       console.error('❌ Setup error:', error);
       toast({
         title: "Setup Error",
-        description: error instanceof Error ? error.message : "Could not start listening. Please check permissions and try again.",
+        description: "Could not start listening. Please try again.",
         variant: "destructive"
       });
     }
@@ -236,6 +254,20 @@ export function VoiceChat() {
     return 'Click to start listening to you and MIA';
   };
 
+  const getInstructionText = () => {
+    if (!isListening) {
+      return (
+        <div className="text-center text-white/70 py-4 px-4 bg-white/10 rounded-lg mb-4">
+          <p className="text-sm font-medium mb-2">🎤 Instructions:</p>
+          <p className="text-xs mb-2">1. Click the button below</p>
+          <p className="text-xs mb-2">2. Allow microphone access</p>
+          <p className="text-xs">3. Select MIA's tab when asked</p>
+        </div>
+      );
+    }
+    return null;
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0F0C29] via-[#24243e] to-[#302B63] flex flex-col items-center justify-center p-4">
       {/* Hidden audio element for MIA */}
@@ -254,12 +286,19 @@ export function VoiceChat() {
           </div>
         </div>
 
+        {/* Instructions */}
+        {getInstructionText()}
+
         {/* Chat Messages */}
         <div className="flex-1 overflow-y-auto space-y-4 mb-6 px-2">
-          {messages.length === 0 && (
+          {messages.length === 0 && isListening && (
+            <div className="text-center text-white/70 py-8">
+              <p>✅ Ready! Start speaking to chat with MIA.</p>
+            </div>
+          )}
+          {messages.length === 0 && !isListening && (
             <div className="text-center text-white/70 py-8">
               <p>👋 Hi! I'm MIA. Click the button below to start our conversation.</p>
-              <p className="mt-2 text-sm">You'll need to grant microphone access and select MIA's tab.</p>
             </div>
           )}
           {messages.map((message) => (
