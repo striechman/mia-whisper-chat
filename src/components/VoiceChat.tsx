@@ -18,6 +18,7 @@ export function VoiceChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isMiaSpeaking, setIsMiaSpeaking] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const { toast } = useToast();
@@ -25,7 +26,12 @@ export function VoiceChat() {
   // Initialize hooks
   const { stream: micStream, startMicrophone, stopMicrophone } = useMicrophoneStream();
   const { stream: miaStream } = useMiaAudioStream('miaAudio');
-  const { isMiaSpeaking } = useMiaSpeaking(miaStream);
+  
+  // MIA speaking detection with callback
+  useMiaSpeaking(miaStream, (speaking: boolean) => {
+    setIsMiaSpeaking(speaking);
+    console.log(speaking ? 'MIA started speaking' : 'MIA stopped speaking');
+  });
   
   // Realtime subscription
   useSupabaseRealtime(setMessages);
@@ -183,6 +189,8 @@ export function VoiceChat() {
               ? 'Processing your message...'
               : isRecording
               ? 'Recording... Stop speaking to send'
+              : isMiaSpeaking
+              ? 'MIA is speaking...'
               : 'Tap to speak with MIA'}
           </p>
         </div>
