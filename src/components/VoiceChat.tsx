@@ -89,8 +89,8 @@ export function VoiceChat() {
       console.log('Starting tab audio capture...');
       
       toast({
-        title: "למה צריך הרשאה?",
-        description: "הדפדפן מחייב אישור גם בטאב הנוכחי כדי למנוע הקלטה נסתרת. לחץ 'Share This Tab' פעם אחת וזהו.",
+        title: "הוראות חשובות",
+        description: "1) בחר 'הטאב הזה' 2) ודא שמסומן 'שתף אודיו' 3) לחץ 'שתף'",
       });
       
       const ms = await capture(); // This will show browser's tab selection dialog
@@ -108,14 +108,20 @@ export function VoiceChat() {
       console.log('✅ Tab audio captured successfully');
       
       toast({
-        title: "אודיו הופעל!",
-        description: "כעת התחבר ל-MIA ולחץ Start בתוך ה-iframe.",
+        title: "אודיו הופעל בהצלחה!",
+        description: "כעת התחבר ל-MIA בחלון למטה.",
       });
     } catch (error) {
       console.error('❌ Error enabling tab audio:', error);
+      
+      let errorMessage = "בבקשה נסה שוב";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      
       toast({
         title: "שגיאה בהפעלת אודיו",
-        description: "בבקשה נסה שוב ובחר 'שתף את הטאב הזה'",
+        description: errorMessage,
         variant: "destructive"
       });
     }
@@ -367,8 +373,12 @@ export function VoiceChat() {
           <div className="flex flex-col items-center gap-6 text-white/80">
             <div className="text-center">
               <h2 className="text-xl font-semibold text-white mb-2">שלב 1: הפעל שיתוף אודיו</h2>
-              <p className="text-white/70 mb-4">לחץ על "הפעל אודיו" כדי לשתף את אודיו הטאב הזה</p>
-              <p className="text-sm text-white/50">הדפדפן ידרוש הרשאה - זה נורמלי גם לטאב הנוכחי</p>
+              <p className="text-white/70 mb-2">לחץ על "הפעל אודיו" כדי לשתף את אודיו הטאב הזה</p>
+              <div className="text-sm text-white/50 space-y-1">
+                <p>🔍 בחר "הטאב הזה" (Current Tab)</p>
+                <p>🔊 ודא שמסומן "שתף אודיו" (Share audio)</p>
+                <p>✅ לחץ "שתף" (Share)</p>
+              </div>
             </div>
             
             <Button 
@@ -378,6 +388,10 @@ export function VoiceChat() {
               <Volume2 className="w-6 h-6 mr-2" />
               הפעל אודיו
             </Button>
+            
+            <div className="text-xs text-white/40 text-center max-w-md">
+              הדפדפן דורש הרשאה למניעת הקלטה נסתרת - זה נורמלי גם לטאב הנוכחי
+            </div>
           </div>
         )}
 
