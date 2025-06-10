@@ -26,7 +26,7 @@ export async function insertMessage(role: 'user' | 'mia', content: string) {
   return data as ChatMessage;
 }
 
-export function useSupabaseRealtime(setMessages: (messages: ChatMessage[]) => void) {
+export function useSupabaseRealtime(setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>) {
   useEffect(() => {
     // Fetch existing messages
     const fetchMessages = async () => {
