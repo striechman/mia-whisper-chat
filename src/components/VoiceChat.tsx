@@ -1,7 +1,8 @@
+
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Mic, MicOff } from 'lucide-react';
+import { Mic, MicOff, Play, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ChatBubble } from './ChatBubble';
 import { SiriRing } from './SiriRing';
@@ -15,6 +16,7 @@ import { useToast } from '@/hooks/use-toast';
 
 export function VoiceChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [isListening, setIsListening] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isMiaSpeaking, setIsMiaSpeaking] = useState(false);
@@ -24,7 +26,7 @@ export function VoiceChat() {
 
   // Initialize hooks
   const { stream: micStream, startMicrophone, stopMicrophone } = useMicrophoneStream();
-  const { stream: miaStream, startTabCapture } = useTabAudioCapture();
+  const { stream: miaStream, startTabCapture, stopTabCapture } = useTabAudioCapture();
   
   // MIA speaking detection with callback
   useMiaSpeaking(miaStream, (speaking: boolean) => {
@@ -59,28 +61,11 @@ export function VoiceChat() {
     }
   );
 
-  const handleConnectMia = async () => {
-    try {
-      await startTabCapture();
-      toast({
-        title: "MIA Audio Connected",
-        description: "Successfully connected to MIA's audio tab",
-      });
-    } catch (error) {
-      console.error('Error connecting to MIA audio:', error);
-      toast({
-        title: "Connection Error",
-        description: "Could not connect to MIA audio. Please try again.",
-        variant: "destructive"
-      });
-    }
-  };
-
   const startRecording = async () => {
+    if (!micStream) return;
+    
     try {
-      const stream = await startMicrophone();
-      
-      const mediaRecorder = new MediaRecorder(stream, {
+      const mediaRecorder = new MediaRecorder(micStream, {
         mimeType: 'audio/webm',
       });
       
@@ -101,7 +86,7 @@ export function VoiceChat() {
       console.error('Error starting recording:', error);
       toast({
         title: "Recording Error",
-        description: "Could not start recording. Please check microphone permissions.",
+        description: "Could not start recording. Please try again.",
         variant: "destructive"
       });
     }
@@ -140,7 +125,6 @@ export function VoiceChat() {
           });
         } finally {
           setIsTranscribing(false);
-          stopMicrophone();
           resolve();
         }
       };
@@ -149,12 +133,84 @@ export function VoiceChat() {
     });
   };
 
-  const handleMicClick = async () => {
-    if (isRecording) {
-      await stopRecording();
-    } else {
-      await startRecording();
+  const handleStartListening = async () => {
+    try {
+      // Start microphone
+      await startMicrophone();
+      
+      // Start tab capture for MIA
+      await startTabCapture();
+      
+      setIsListening(true);
+      
+      toast({
+        title: "Listening Started",
+        description: "Connected to microphone and MIA audio. Start speaking!",
+      });
+    } catch (error) {
+      console.error('Error starting listening:', error);
+      toast({
+        title: "Setup Error",
+        description: "Could not start listening. Please check permissions and try again.",
+        variant: "destructive"
+      });
     }
+  };
+
+  const handleStopListening = () => {
+    try {
+      // Stop microphone
+      stopMicrophone();
+      
+      // Stop tab capture
+      stopTabCapture();
+      
+      setIsListening(false);
+      setIsRecording(false);
+      
+      toast({
+        title: "Listening Stopped",
+        description: "Disconnected from audio sources.",
+      });
+    } catch (error) {
+      console.error('Error stopping listening:', error);
+    }
+  };
+
+  const handleMainButtonClick = () => {
+    if (isListening) {
+      handleStopListening();
+    } else {
+      handleStartListening();
+    }
+  };
+
+  const getMainButtonContent = () => {
+    if (isTranscribing) {
+      return <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />;
+    }
+    
+    if (isListening) {
+      return <Square className="w-6 h-6 text-white" />;
+    }
+    
+    return <Play className="w-6 h-6 text-white" />;
+  };
+
+  const getStatusText = () => {
+    if (isTranscribing) {
+      return 'Processing your message...';
+    }
+    if (isRecording) {
+      return 'Recording... Stop speaking to send';
+    }
+    if (isMiaSpeaking) {
+      return 'MIA is speaking...';
+    }
+    if (isListening) {
+      return 'Listening... Start speaking';
+    }
+    return 'Click to start listening to you and MIA';
   };
 
   return (
@@ -175,23 +231,12 @@ export function VoiceChat() {
           </div>
         </div>
 
-        {/* Connect MIA Audio Button */}
-        {!miaStream && (
-          <div className="flex justify-center mb-4">
-            <Button onClick={handleConnectMia} variant="secondary">
-              Connect MIA Audio
-            </Button>
-          </div>
-        )}
-
         {/* Chat Messages */}
         <div className="flex-1 overflow-y-auto space-y-4 mb-6 px-2">
           {messages.length === 0 && (
             <div className="text-center text-white/70 py-8">
-              <p>👋 Hi! I'm MIA. Press the microphone to start our conversation.</p>
-              {!miaStream && (
-                <p className="mt-2 text-sm">First, connect to MIA's audio tab above.</p>
-              )}
+              <p>👋 Hi! I'm MIA. Click the button below to start our conversation.</p>
+              <p className="mt-2 text-sm">You'll need to grant microphone access and select MIA's tab.</p>
             </div>
           )}
           {messages.map((message) => (
@@ -199,37 +244,25 @@ export function VoiceChat() {
           ))}
         </div>
 
-        {/* Microphone Button */}
+        {/* Main Control Button */}
         <div className="flex justify-center">
           <Button
-            onClick={handleMicClick}
+            onClick={handleMainButtonClick}
             disabled={isTranscribing}
             className={`w-16 h-16 rounded-full transition-all duration-200 ${
-              isRecording
-                ? 'bg-red-500 hover:bg-red-600 animate-pulse'
-                : 'bg-white/20 hover:bg-white/30'
+              isListening
+                ? 'bg-red-500 hover:bg-red-600'
+                : 'bg-green-500 hover:bg-green-600'
             } border-2 border-white/30`}
           >
-            {isTranscribing ? (
-              <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            ) : isRecording ? (
-              <MicOff className="w-6 h-6 text-white" />
-            ) : (
-              <Mic className="w-6 h-6 text-white" />
-            )}
+            {getMainButtonContent()}
           </Button>
         </div>
 
         {/* Status Text */}
         <div className="text-center mt-4">
           <p className="text-white/60 text-sm">
-            {isTranscribing
-              ? 'Processing your message...'
-              : isRecording
-              ? 'Recording... Stop speaking to send'
-              : isMiaSpeaking
-              ? 'MIA is speaking...'
-              : 'Tap to speak with MIA'}
+            {getStatusText()}
           </p>
         </div>
       </div>
