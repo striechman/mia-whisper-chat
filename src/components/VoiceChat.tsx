@@ -1,7 +1,8 @@
+
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Mic, MicOff, Play, Square, ExternalLink } from 'lucide-react';
+import { Mic, MicOff, Play, Square, ExternalLink, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ChatBubble } from './ChatBubble';
 import { SiriRing } from './SiriRing';
@@ -21,6 +22,7 @@ export function VoiceChat() {
   const [isMiaSpeaking, setIsMiaSpeaking] = useState(false);
   const [isMiaRecording, setIsMiaRecording] = useState(false);
   const [miaVisible, setMiaVisible] = useState(false);
+  const [step, setStep] = useState<'launch' | 'setup' | 'ready'>('launch');
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const miaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -85,23 +87,31 @@ export function VoiceChat() {
   const startMiaInside = async () => {
     try {
       setMiaVisible(true);
+      setStep('setup');
       console.log('Starting MIA inside page...');
       
-      // Capture this tab's audio
-      const mediaStream = await captureTab();
-      console.log('✅ Tab audio captured successfully');
-      
       toast({
-        title: "MIA Launched",
-        description: "MIA iframe loaded and audio capture started. You can now log in to MIA.",
+        title: "MIA iframe loaded",
+        description: "Please login/register in MIA, then click 'Start Listening' when ready.",
       });
     } catch (error) {
       console.error('❌ Error launching MIA:', error);
       setMiaVisible(false);
+    }
+  };
+
+  const openMiaInNewWindow = () => {
+    const newWindow = window.open(
+      'https://online.meetinginsights.audiocodes.com/uigpt/miamarketing/index.php',
+      'mia-window',
+      'width=1200,height=800,scrollbars=yes,resizable=yes'
+    );
+    
+    if (newWindow) {
+      setStep('ready');
       toast({
-        title: "Tab Capture Error",
-        description: "Need tab-audio permission. Please try again and select 'This Tab'.",
-        variant: "destructive"
+        title: "MIA opened in new window",
+        description: "Login to MIA in the new window, then click 'Start Listening' here to begin capturing audio.",
       });
     }
   };
@@ -246,15 +256,21 @@ export function VoiceChat() {
       await startMicrophone();
       setIsListening(true);
       
+      // Start tab capture for MIA
+      console.log('Starting tab capture...');
+      const mediaStream = await captureTab();
+      console.log('✅ Tab audio captured successfully');
+      setStep('ready');
+      
       toast({
         title: "Listening Started",
-        description: "Connected to microphone. Start speaking!",
+        description: "Connected to microphone and capturing tab audio. Start speaking!",
       });
     } catch (error) {
-      console.error('❌ Microphone error:', error);
+      console.error('❌ Error starting listening:', error);
       toast({
-        title: "Microphone Error",
-        description: "Could not access microphone. Please check permissions.",
+        title: "Permission Error",
+        description: "Need microphone and tab audio permissions. Please try again and select 'This Tab'.",
         variant: "destructive"
       });
     }
@@ -280,7 +296,7 @@ export function VoiceChat() {
       setIsListening(false);
       setIsRecording(false);
       setIsMiaRecording(false);
-      setMiaVisible(false);
+      setStep('launch');
       
       toast({
         title: "Listening Stopped",
@@ -324,37 +340,76 @@ export function VoiceChat() {
     if (isListening) {
       return 'Listening... Start speaking';
     }
-    return 'Click to start listening to you and MIA';
+    if (step === 'setup') {
+      return 'Login to MIA below, then click Start Listening';
+    }
+    return 'Choose how to access MIA, then start listening';
+  };
+
+  const getStepInstructions = () => {
+    switch (step) {
+      case 'launch':
+        return (
+          <div className="text-center mb-6 space-y-4">
+            <h2 className="text-xl font-semibold text-white mb-4">How would you like to access MIA?</h2>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <Button
+                onClick={startMiaInside}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold"
+              >
+                <ExternalLink className="w-5 h-5 mr-2" />
+                Open MIA Here (iframe)
+              </Button>
+              <Button
+                onClick={openMiaInNewWindow}
+                className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-semibold"
+              >
+                <ExternalLink className="w-5 h-5 mr-2" />
+                Open MIA in New Window
+              </Button>
+            </div>
+            <p className="text-white/70 text-sm">Choose your preferred way to access MIA</p>
+          </div>
+        );
+      case 'setup':
+        return (
+          <div className="text-center mb-4">
+            <div className="flex items-center justify-center gap-2 text-white/80 text-sm">
+              <span>Step 1: Login to MIA</span>
+              <ArrowRight className="w-4 h-4" />
+              <span>Step 2: Click Start Listening</span>
+            </div>
+          </div>
+        );
+      case 'ready':
+        return (
+          <div className="text-center mb-4">
+            <p className="text-green-400 text-sm">✅ Ready to chat with MIA!</p>
+          </div>
+        );
+    }
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0F0C29] via-[#24243e] to-[#302B63] flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-4xl flex flex-col h-[90vh]">
-        {/* MIA Launch Button */}
-        {!miaVisible && (
-          <div className="text-center mb-6">
-            <Button
-              onClick={startMiaInside}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold"
-            >
-              <ExternalLink className="w-5 h-5 mr-2" />
-              Launch MIA Inside Page
-            </Button>
-          </div>
-        )}
+        {/* Step Instructions */}
+        {getStepInstructions()}
 
         {/* MIA iframe */}
-        <iframe
-          id="miaFrame"
-          src="https://online.meetinginsights.audiocodes.com/uigpt/miamarketing/index.php"
-          className={`w-full h-[450px] rounded-xl border-2 border-white/20 mt-2 ${miaVisible ? '' : 'hidden'}`}
-          allow="microphone; autoplay"
-          sandbox="allow-scripts allow-forms allow-same-origin"
-          title="MIA Chat Interface"
-        />
+        {miaVisible && (
+          <iframe
+            id="miaFrame"
+            src="https://online.meetinginsights.audiocodes.com/uigpt/miamarketing/index.php"
+            className="w-full h-[600px] rounded-xl border-2 border-white/20 mt-2 mb-4"
+            allow="microphone; autoplay"
+            sandbox="allow-scripts allow-forms allow-same-origin"
+            title="MIA Chat Interface"
+          />
+        )}
 
         {/* MIA Avatar with Siri Ring */}
-        {miaVisible && (
+        {(step === 'ready' || isListening) && (
           <div className="relative flex justify-center my-6">
             <div className="relative w-24 h-24">
               <img
@@ -374,9 +429,14 @@ export function VoiceChat() {
               <p>✅ Ready! Start speaking to chat with MIA.</p>
             </div>
           )}
-          {messages.length === 0 && !isListening && (
+          {messages.length === 0 && !isListening && step === 'launch' && (
             <div className="text-center text-white/70 py-8">
-              <p>👋 Hi! I'm MIA. Launch me above to start our conversation.</p>
+              <p>👋 Hi! Choose how to access MIA above to start our conversation.</p>
+            </div>
+          )}
+          {messages.length === 0 && !isListening && step === 'setup' && (
+            <div className="text-center text-white/70 py-8">
+              <p>Please login to MIA above, then click "Start Listening" to begin.</p>
             </div>
           )}
           {messages.map((message) => (
@@ -385,25 +445,32 @@ export function VoiceChat() {
         </div>
 
         {/* Main Control Button */}
-        <div className="flex justify-center">
-          <Button
-            onClick={handleMainButtonClick}
-            disabled={isTranscribing}
-            className={`w-16 h-16 rounded-full transition-all duration-200 ${
-              isListening
-                ? 'bg-red-500 hover:bg-red-600'
-                : 'bg-green-500 hover:bg-green-600'
-            } border-2 border-white/30`}
-          >
-            {getMainButtonContent()}
-          </Button>
-        </div>
+        {step !== 'launch' && (
+          <div className="flex justify-center">
+            <Button
+              onClick={handleMainButtonClick}
+              disabled={isTranscribing}
+              className={`w-16 h-16 rounded-full transition-all duration-200 ${
+                isListening
+                  ? 'bg-red-500 hover:bg-red-600'
+                  : 'bg-green-500 hover:bg-green-600'
+              } border-2 border-white/30`}
+            >
+              {getMainButtonContent()}
+            </Button>
+          </div>
+        )}
 
         {/* Status Text */}
         <div className="text-center mt-4">
           <p className="text-white/60 text-sm">
             {getStatusText()}
           </p>
+          {step === 'setup' && (
+            <p className="text-white/50 text-xs mt-1">
+              The browser will ask for tab audio permission - this is needed to hear MIA's responses
+            </p>
+          )}
         </div>
       </div>
     </div>
