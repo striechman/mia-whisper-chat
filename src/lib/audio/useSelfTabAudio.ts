@@ -18,8 +18,7 @@ export const useSelfTabAudio = () => {
         audio: {
           echoCancellation: false,
           noiseSuppression: false,
-          autoGainControl: false,
-          suppressLocalAudioPlayback: false
+          autoGainControl: false
         }
       });
       
