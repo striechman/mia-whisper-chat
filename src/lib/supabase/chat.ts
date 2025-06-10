@@ -71,7 +71,7 @@ export function useSupabaseRealtime(setMessages: (messages: ChatMessage[]) => vo
             content: payload.new.content,
             created_at: payload.new.created_at
           };
-          setMessages(prev => [...prev, newMessage]);
+          setMessages((prev: ChatMessage[]) => [...prev, newMessage]);
         }
       )
       .subscribe();
