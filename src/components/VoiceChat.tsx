@@ -15,13 +15,14 @@ import { useToast } from '@/hooks/use-toast';
 
 export function VoiceChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [step, setStep] = useState<0 | 1 | 2>(0); // 0=login, 1=share-audio, 2=chat
+  const [step, setStep] = useState<0 | 1 | 2>(0); // 0=share-audio, 1=mia-login, 2=chat
   const [isListening, setIsListening] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isMiaSpeaking, setIsMiaSpeaking] = useState(false);
   const [isMiaRecording, setIsMiaRecording] = useState(false);
   const [showMiaSettings, setShowMiaSettings] = useState(false);
+  const [miaReady, setMiaReady] = useState(false);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const miaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -83,14 +84,6 @@ export function VoiceChat() {
     }
   );
 
-  const handleIframeReady = () => {
-    console.log('MIA iframe loaded');
-    // Give user time to login, then show next step
-    setTimeout(() => {
-      setStep(1);
-    }, 2000);
-  };
-
   const enableTabAudio = async () => {
     try {
       console.log('Starting tab audio capture...');
@@ -110,13 +103,13 @@ export function VoiceChat() {
         proxyAudio.play().catch(() => {});
       }
       
-      setStep(2); // Move to chat step - iframe will be hidden
+      setStep(1); // Move to MIA login step
       
       console.log('✅ Tab audio captured successfully');
       
       toast({
-        title: "MIA פועל ברקע - התחל לדבר!",
-        description: "כעת אתה יכול להתחיל לדבר עם MIA. ה-iframe הוסתר אך האודיו ממשיך לפעול.",
+        title: "אודיו הופעל!",
+        description: "כעת התחבר ל-MIA ולחץ Start בתוך ה-iframe.",
       });
     } catch (error) {
       console.error('❌ Error enabling tab audio:', error);
@@ -126,6 +119,25 @@ export function VoiceChat() {
         variant: "destructive"
       });
     }
+  };
+
+  const handleMiaReady = () => {
+    console.log('MIA is ready, user completed login');
+    setMiaReady(true);
+    
+    toast({
+      title: "MIA מוכן!",
+      description: "לחץ 'התחל צ'אט' כדי להתחיל לדבר עם MIA.",
+    });
+  };
+
+  const startChat = () => {
+    setStep(2); // Move to chat step - iframe will be hidden
+    
+    toast({
+      title: "MIA פועל ברקע - התחל לדבר!",
+      description: "כעת אתה יכול להתחיל לדבר עם MIA. ה-iframe הוסתר אך האודיו ממשיך לפעול.",
+    });
   };
 
   const startMiaRecording = async () => {
@@ -350,32 +362,12 @@ export function VoiceChat() {
         {/* Hidden audio element keeps MIA sound alive */}
         <audio id="miaProxy" className="hidden" />
         
-        {/* Step 0: MIA Login - visible only when step < 2 */}
+        {/* Step 0: Enable Audio First */}
         {step === 0 && (
-          <div className="space-y-4 text-white/80">
-            <div className="text-center mb-4">
-              <h2 className="text-xl font-semibold text-white mb-2">שלב 1: התחבר ל-MIA</h2>
-              <p className="text-white/70">מלא פרטים ולחץ Start בתוך ה-iframe</p>
-            </div>
-            
-            <iframe
-              id="miaFrame"
-              src="https://online.meetinginsights.audiocodes.com/uigpt/miamarketing/index.php"
-              className="w-full h-[600px] rounded-xl border-2 border-white/20"
-              allow="microphone; autoplay"
-              sandbox="allow-scripts allow-forms allow-same-origin"
-              title="MIA Chat Interface"
-              onLoad={handleIframeReady}
-            />
-          </div>
-        )}
-
-        {/* Step 1: Enable Audio */}
-        {step === 1 && (
           <div className="flex flex-col items-center gap-6 text-white/80">
             <div className="text-center">
-              <h2 className="text-xl font-semibold text-white mb-2">שלב 2: הפעל שיתוף אודיו</h2>
-              <p className="text-white/70 mb-4">לחץ על "הפעל אודיו" כדי לשתף את אודיו הטאב הזה בלבד</p>
+              <h2 className="text-xl font-semibold text-white mb-2">שלב 1: הפעל שיתוף אודיו</h2>
+              <p className="text-white/70 mb-4">לחץ על "הפעל אודיו" כדי לשתף את אודיו הטאב הזה</p>
               <p className="text-sm text-white/50">הדפדפן ידרוש הרשאה - זה נורמלי גם לטאב הנוכחי</p>
             </div>
             
@@ -386,18 +378,36 @@ export function VoiceChat() {
               <Volume2 className="w-6 h-6 mr-2" />
               הפעל אודיו
             </Button>
+          </div>
+        )}
+
+        {/* Step 1: MIA Login - visible and waiting for user to complete */}
+        {step === 1 && (
+          <div className="space-y-4 text-white/80">
+            <div className="text-center mb-4">
+              <h2 className="text-xl font-semibold text-white mb-2">שלב 2: התחבר ל-MIA</h2>
+              <p className="text-white/70">מלא פרטים ולחץ Start בתוך ה-iframe, ואז לחץ "התחל צ'אט" למטה</p>
+            </div>
             
-            {/* Show iframe for settings if needed */}
-            {showMiaSettings && (
-              <div className="w-full">
-                <iframe
-                  id="miaSettingsFrame"
-                  src="https://online.meetinginsights.audiocodes.com/uigpt/miamarketing/index.php"
-                  className="w-full h-[400px] rounded-xl border-2 border-white/20"
-                  allow="microphone; autoplay"
-                  sandbox="allow-scripts allow-forms allow-same-origin"
-                  title="MIA Settings"
-                />
+            <iframe
+              id="miaFrame"
+              src="https://online.meetinginsights.audiocodes.com/uigpt/miamarketing/index.php"
+              className="w-full h-[500px] rounded-xl border-2 border-white/20"
+              allow="microphone; autoplay"
+              sandbox="allow-scripts allow-forms allow-same-origin"
+              title="MIA Chat Interface"
+              onLoad={handleMiaReady}
+            />
+            
+            {miaReady && (
+              <div className="text-center mt-4">
+                <Button 
+                  onClick={startChat}
+                  className="bg-green-600 hover:bg-green-700 text-white px-8 py-4 text-lg rounded-lg font-semibold"
+                >
+                  <CheckCircle className="w-6 h-6 mr-2" />
+                  התחל צ'אט
+                </Button>
               </div>
             )}
           </div>
