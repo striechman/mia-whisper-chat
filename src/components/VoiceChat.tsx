@@ -1,7 +1,8 @@
+
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Mic, MicOff, Play, Square, Volume2, CheckCircle, ExternalLink } from 'lucide-react';
+import { Mic, MicOff, Play, Square, Volume2, CheckCircle, ExternalLink, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ChatBubble } from './ChatBubble';
 import { SiriRing } from './SiriRing';
@@ -12,6 +13,7 @@ import { useMiaSpeaking } from '@/lib/audio/useMiaSpeaking';
 import { useVAD } from '@/lib/audio/useVAD';
 import { transcribe } from '@/lib/openai/whisper';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 
 export function VoiceChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -36,8 +38,8 @@ export function VoiceChat() {
   
   // MIA speaking detection with callback
   useMiaSpeaking(miaStream, async (speaking: boolean) => {
-    setIsMiaSpeaking(speaking);
     console.log(speaking ? 'MIA started speaking' : 'MIA stopped speaking');
+    setIsMiaSpeaking(speaking);
     
     // Anti-echo: disable microphone when MIA is speaking
     if (micStream) {
@@ -74,6 +76,9 @@ export function VoiceChat() {
     micStream,
     () => {
       console.log('User started speaking');
+      if (!isRecording && !isMiaSpeaking) {
+        startRecording();
+      }
     },
     async () => {
       console.log('User stopped speaking - processing recording');
@@ -82,6 +87,32 @@ export function VoiceChat() {
       }
     }
   );
+
+  const clearChatHistory = async () => {
+    try {
+      const { error } = await supabase
+        .from('chat_messages')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all rows
+      
+      if (error) {
+        console.error('Error clearing chat history:', error);
+        toast({
+          title: "שגיאה",
+          description: "לא הצלחנו למחוק את היסטוריית השיחה",
+          variant: "destructive"
+        });
+      } else {
+        setMessages([]);
+        toast({
+          title: "היסטוריית השיחה נמחקה",
+          description: "השיחה התחילה מחדש",
+        });
+      }
+    } catch (error) {
+      console.error('Error clearing chat history:', error);
+    }
+  };
 
   const openMiaInNewTab = () => {
     window.open("https://online.meetinginsights.audiocodes.com/uigpt/miamarketing/index.php", "_blank");
@@ -145,6 +176,7 @@ export function VoiceChat() {
     if (!miaStream || isMiaRecording) return;
     
     try {
+      console.log('Starting MIA recording...');
       const mediaRecorder = new MediaRecorder(miaStream, {
         mimeType: 'audio/webm',
       });
@@ -182,15 +214,29 @@ export function VoiceChat() {
           console.log('MIA audio blob created:', audioBlob.size, 'bytes');
           
           if (audioBlob.size > 1000) {
+            console.log('Transcribing MIA audio...');
             const transcriptionText = await transcribe(audioBlob);
+            console.log('MIA transcription result:', transcriptionText);
             
             if (transcriptionText.trim()) {
               await insertMessage('mia', transcriptionText);
-              console.log('MIA message saved:', transcriptionText);
+              console.log('MIA message saved to database');
+              
+              toast({
+                title: "MIA אמרה",
+                description: transcriptionText,
+              });
             }
+          } else {
+            console.log('MIA audio blob too small, skipping transcription');
           }
         } catch (error) {
           console.error('Error processing MIA recording:', error);
+          toast({
+            title: "שגיאה בעיבוד הקלטת MIA",
+            description: "נסה שוב",
+            variant: "destructive"
+          });
         } finally {
           resolve();
         }
@@ -201,12 +247,13 @@ export function VoiceChat() {
   };
 
   const startRecording = async () => {
-    if (!micStream) {
-      console.error('No microphone stream available for recording');
+    if (!micStream || isRecording) {
+      console.log('Cannot start recording - no mic stream or already recording');
       return;
     }
     
     try {
+      console.log('Starting user recording...');
       const mediaRecorder = new MediaRecorder(micStream, {
         mimeType: 'audio/webm',
       });
@@ -223,12 +270,12 @@ export function VoiceChat() {
       mediaRecorderRef.current = mediaRecorder;
       setIsRecording(true);
       
-      console.log('Recording started');
+      console.log('User recording started');
     } catch (error) {
       console.error('Error starting recording:', error);
       toast({
-        title: "Recording Error",
-        description: "Could not start recording. Please try again.",
+        title: "שגיאת הקלטה",
+        description: "לא הצלחנו להתחיל הקלטה. נסה שוב.",
         variant: "destructive"
       });
     }
@@ -241,28 +288,34 @@ export function VoiceChat() {
       const recorder = mediaRecorderRef.current!;
       
       recorder.onstop = async () => {
-        console.log('Recording stopped, processing audio...');
+        console.log('User recording stopped, processing audio...');
         setIsRecording(false);
         setIsTranscribing(true);
         
         try {
           const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-          console.log('Audio blob created:', audioBlob.size, 'bytes');
+          console.log('User audio blob created:', audioBlob.size, 'bytes');
           
-          const transcriptionText = await transcribe(audioBlob);
-          
-          if (transcriptionText.trim()) {
-            await insertMessage('user', transcriptionText);
-            toast({
-              title: "Message sent",
-              description: transcriptionText,
-            });
+          if (audioBlob.size > 1000) {
+            console.log('Transcribing user audio...');
+            const transcriptionText = await transcribe(audioBlob);
+            console.log('User transcription result:', transcriptionText);
+            
+            if (transcriptionText.trim()) {
+              await insertMessage('user', transcriptionText);
+              console.log('User message saved to database');
+              
+              toast({
+                title: "הודעה נשלחה",
+                description: transcriptionText,
+              });
+            }
           }
         } catch (error) {
-          console.error('Error processing recording:', error);
+          console.error('Error processing user recording:', error);
           toast({
-            title: "Transcription Error",
-            description: "Could not process your recording. Please try again.",
+            title: "שגיאה בעיבוד ההקלטה",
+            description: "לא הצלחנו לעבד את ההקלטה שלך. נסה שוב.",
             variant: "destructive"
           });
         } finally {
@@ -423,11 +476,20 @@ export function VoiceChat() {
         {/* Step 2: Voice Chat */}
         {step === 2 && (
           <>
-            {/* Success indicator */}
+            {/* Success indicator and Clear Chat button */}
             <div className="text-center mb-4">
               <div className="flex items-center justify-center gap-4 text-green-400 mb-2">
                 <CheckCircle className="w-5 h-5" />
                 <span>מחובר בהצלחה ל-MIA! (מאזין לטאב)</span>
+                <Button
+                  onClick={clearChatHistory}
+                  variant="outline"
+                  size="sm"
+                  className="ml-4 bg-red-600 hover:bg-red-700 text-white border-red-600"
+                >
+                  <Trash2 className="w-4 h-4 mr-1" />
+                  מחק שיחה
+                </Button>
               </div>
             </div>
 
