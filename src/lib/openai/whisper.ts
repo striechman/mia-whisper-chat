@@ -7,16 +7,18 @@ export async function transcribe(blob: Blob): Promise<string> {
   const formData = new FormData();
   formData.append("file", blob, "audio.webm");
   formData.append("model", "whisper-1");
-  formData.append("language", "en"); // Fixed to English
+  formData.append("language", "he"); // Hebrew support
 
   try {
-    // Get API key from environment variable
+    // Get API key from environment variable - FIXED to use correct variable name
     const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
     
     console.log('🔑 Checking API key...');
     if (!apiKey) {
       console.error('❌ OpenAI API key not found in environment variables');
-      throw new Error('OpenAI API key not found in environment variables');
+      console.log('📝 Expected variable: VITE_OPENAI_API_KEY');
+      console.log('📝 Available env vars:', Object.keys(import.meta.env));
+      throw new Error('OpenAI API key not found in environment variables. Please set VITE_OPENAI_API_KEY.');
     }
     console.log('✅ API key found, length:', apiKey.length);
 
