@@ -1,13 +1,13 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Mic, MicOff, Play, Square, Volume2, CheckCircle, Settings } from 'lucide-react';
+import { Mic, MicOff, Play, Square, Volume2, CheckCircle, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ChatBubble } from './ChatBubble';
 import { SiriRing } from './SiriRing';
 import { ChatMessage, useSupabaseRealtime, insertMessage } from '@/lib/supabase/chat';
 import { useMicrophoneStream } from '@/lib/audio/useMicrophoneStream';
-import { useSelfTabAudio } from '@/lib/audio/useSelfTabAudio';
+import { useTabAudioCapture } from '@/lib/audio/useTabAudioCapture';
 import { useMiaSpeaking } from '@/lib/audio/useMiaSpeaking';
 import { useVAD } from '@/lib/audio/useVAD';
 import { transcribe } from '@/lib/openai/whisper';
@@ -15,14 +15,13 @@ import { useToast } from '@/hooks/use-toast';
 
 export function VoiceChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [step, setStep] = useState<0 | 1 | 2>(0); // 0=share-audio, 1=mia-login, 2=chat
+  const [step, setStep] = useState<0 | 1 | 2>(0); // 0=open-mia, 1=capture-audio, 2=chat
   const [isListening, setIsListening] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isMiaSpeaking, setIsMiaSpeaking] = useState(false);
   const [isMiaRecording, setIsMiaRecording] = useState(false);
-  const [showMiaSettings, setShowMiaSettings] = useState(false);
-  const [miaReady, setMiaReady] = useState(false);
+  const [miaTabOpened, setMiaTabOpened] = useState(false);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const miaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -33,7 +32,7 @@ export function VoiceChat() {
 
   // Initialize hooks
   const { stream: micStream, startMicrophone, stopMicrophone } = useMicrophoneStream();
-  const { stream: miaStream, capture, stopCapture } = useSelfTabAudio();
+  const { stream: miaStream, startTabCapture, stopTabCapture } = useTabAudioCapture();
   
   // MIA speaking detection with callback
   useMiaSpeaking(miaStream, async (speaking: boolean) => {
@@ -84,16 +83,27 @@ export function VoiceChat() {
     }
   );
 
-  const enableTabAudio = async () => {
+  const openMiaInNewTab = () => {
+    window.open("https://online.meetinginsights.audiocodes.com/uigpt/miamarketing/index.php", "_blank");
+    setMiaTabOpened(true);
+    setStep(1);
+    
+    toast({
+      title: "MIA נפתחה בטאב חדש!",
+      description: "מלא את הפרטים בטאב החדש ולחץ 'Start'. אחר כך חזור לכאן ולחץ 'התחל להאזין ל-MIA'.",
+    });
+  };
+
+  const captureMiaTabAudio = async () => {
     try {
-      console.log('Starting tab audio capture...');
+      console.log('Starting MIA tab audio capture...');
       
       toast({
         title: "הוראות שיתוף אודיו",
-        description: "כשייפתח החלון: 1) בחר 'Chrome Tab' 2) בחר את הטאב 'MIA Voice Integration Guide' 3) ודא שמסומן 'Also share tab audio' 4) לחץ 'Share'",
+        description: "🟣 בחר את הטאב שבו MIA פתוחה ושתף את האודיו כדי להאזין לה כאן",
       });
       
-      const ms = await capture(); // This will show browser's tab selection dialog
+      const ms = await startTabCapture();
       
       // Keep audio alive with hidden proxy element
       const proxyAudio = document.getElementById('miaProxy') as HTMLAudioElement;
@@ -103,21 +113,21 @@ export function VoiceChat() {
         proxyAudio.play().catch(() => {});
       }
       
-      setStep(1); // Move to MIA login step
+      setStep(2); // Move to chat step
       
-      console.log('✅ Tab audio captured successfully');
+      console.log('✅ MIA tab audio captured successfully');
       
       toast({
         title: "שיתוף אודיו הצליח!",
-        description: "כעת התחבר ל-MIA בחלון למטה ומלא את הפרטים.",
+        description: "כעת אתה יכול להתחיל לדבר עם MIA. האזנה לטאב MIA פעילה!",
       });
     } catch (error) {
-      console.error('❌ Error enabling tab audio:', error);
+      console.error('❌ Error capturing MIA tab audio:', error);
       
       let errorMessage = "בבקשה נסה שוב";
       if (error instanceof Error) {
         if (error.message.includes('No audio track')) {
-          errorMessage = "לא נמצא אודיו. ודא שבחרת טאב עם אודיו ושמסומן 'Also share tab audio'";
+          errorMessage = "לא נמצא אודיו. ודא שבחרת את הטאב עם MIA ושמסומן 'Also share tab audio'";
         } else {
           errorMessage = error.message;
         }
@@ -129,25 +139,6 @@ export function VoiceChat() {
         variant: "destructive"
       });
     }
-  };
-
-  const handleMiaReady = () => {
-    console.log('MIA is ready, user completed login');
-    setMiaReady(true);
-    
-    toast({
-      title: "MIA מוכן!",
-      description: "לחץ 'התחל צ'אט' כדי להתחיל לדבר עם MIA.",
-    });
-  };
-
-  const startChat = () => {
-    setStep(2); // Move to chat step - iframe will be hidden
-    
-    toast({
-      title: "MIA פועל ברקע - התחל לדבר!",
-      description: "כעת אתה יכול להתחיל לדבר עם MIA. ה-iframe הוסתר אך האודיו ממשיך לפעול.",
-    });
   };
 
   const startMiaRecording = async () => {
@@ -309,7 +300,7 @@ export function VoiceChat() {
       console.log('Stopping listening...');
       
       stopMicrophone();
-      stopCapture();
+      stopTabCapture();
       
       if (isMiaRecording) {
         stopMiaRecording();
@@ -319,6 +310,7 @@ export function VoiceChat() {
       setIsRecording(false);
       setIsMiaRecording(false);
       setStep(0);
+      setMiaTabOpened(false);
       
       toast({
         title: "הפסקת האזנה",
@@ -372,100 +364,71 @@ export function VoiceChat() {
         {/* Hidden audio element keeps MIA sound alive */}
         <audio id="miaProxy" className="hidden" />
         
-        {/* Step 0: Enable Audio First */}
+        {/* Step 0: Open MIA in New Tab */}
         {step === 0 && (
           <div className="flex flex-col items-center gap-6 text-white/80">
             <div className="text-center">
-              <h2 className="text-xl font-semibold text-white mb-2">שלב 1: הפעל שיתוף אודיו</h2>
-              <p className="text-white/70 mb-4">לחץ "הפעל אודיו" ובחר את הטאב הנוכחי עם אודיו</p>
+              <h2 className="text-xl font-semibold text-white mb-2">שלב 1: פתח את MIA בטאב חדש</h2>
+              <p className="text-white/70 mb-4">לחץ על הכפתור למטה כדי לפתוח את MIA בטאב נפרד</p>
+              
+              <div className="text-sm text-white/50 space-y-2 bg-white/5 p-4 rounded-lg max-w-md">
+                <p className="font-semibold text-white/70">הוראות:</p>
+                <p>1️⃣ לחץ "פתח את MIA בטאב חדש"</p>
+                <p>2️⃣ מלא פרטים בטאב החדש ולחץ "Start"</p>
+                <p>3️⃣ חזור לטאב הזה ועבור לשלב הבא</p>
+              </div>
+            </div>
+            
+            <Button 
+              onClick={openMiaInNewTab}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 text-lg rounded-lg font-semibold"
+            >
+              <ExternalLink className="w-6 h-6 mr-2" />
+              פתח את MIA בטאב חדש
+            </Button>
+          </div>
+        )}
+
+        {/* Step 1: Capture MIA Audio */}
+        {step === 1 && (
+          <div className="flex flex-col items-center gap-6 text-white/80">
+            <div className="text-center">
+              <h2 className="text-xl font-semibold text-white mb-2">שלב 2: התחל להאזין ל-MIA</h2>
+              <p className="text-white/70 mb-4">כעת לכוד את האודיו של MIA מהטאב השני</p>
               
               <div className="text-sm text-white/50 space-y-2 bg-white/5 p-4 rounded-lg max-w-md">
                 <p className="font-semibold text-white/70">הוראות מפורטות:</p>
-                <p>1️⃣ לחץ "הפעל אודיו" למטה</p>
+                <p>1️⃣ לחץ "התחל להאזין ל-MIA" למטה</p>
                 <p>2️⃣ בחר "Chrome Tab" (לא Window או Entire Screen)</p>
-                <p>3️⃣ בחר את הטאב "MIA Voice Integration Guide"</p>
+                <p>3️⃣ בחר את הטאב עם MIA</p>
                 <p>4️⃣ ✅ ודא שמסומן "Also share tab audio"</p>
                 <p>5️⃣ לחץ "Share"</p>
               </div>
             </div>
             
             <Button 
-              onClick={enableTabAudio}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 text-lg rounded-lg font-semibold"
+              onClick={captureMiaTabAudio}
+              className="bg-green-600 hover:bg-green-700 text-white px-8 py-4 text-lg rounded-lg font-semibold"
             >
               <Volume2 className="w-6 h-6 mr-2" />
-              הפעל אודיו
+              התחל להאזין ל-MIA
             </Button>
             
             <div className="text-xs text-white/40 text-center max-w-md">
-              הדפדפן דורש הרשאה למניעת הקלטה נסתרת - זה נורמלי גם לטאב הנוכחי
+              הדפדפן דורש הרשאה למניעת הקלטה נסתרת - זה נורמלי גם לטאב אחר
             </div>
-          </div>
-        )}
-
-        {/* Step 1: MIA Login - visible and waiting for user to complete */}
-        {step === 1 && (
-          <div className="space-y-4 text-white/80">
-            <div className="text-center mb-4">
-              <h2 className="text-xl font-semibold text-white mb-2">שלב 2: התחבר ל-MIA</h2>
-              <p className="text-white/70">מלא פרטים ולחץ Start בתוך ה-iframe, ואז לחץ "התחל צ'אט" למטה</p>
-            </div>
-            
-            <iframe
-              id="miaFrame"
-              src="https://online.meetinginsights.audiocodes.com/uigpt/miamarketing/index.php"
-              className="w-full h-[500px] rounded-xl border-2 border-white/20"
-              allow="microphone; autoplay"
-              sandbox="allow-scripts allow-forms allow-same-origin"
-              title="MIA Chat Interface"
-              onLoad={handleMiaReady}
-            />
-            
-            {miaReady && (
-              <div className="text-center mt-4">
-                <Button 
-                  onClick={startChat}
-                  className="bg-green-600 hover:bg-green-700 text-white px-8 py-4 text-lg rounded-lg font-semibold"
-                >
-                  <CheckCircle className="w-6 h-6 mr-2" />
-                  התחל צ'אט
-                </Button>
-              </div>
-            )}
           </div>
         )}
 
         {/* Step 2: Voice Chat */}
         {step === 2 && (
           <>
-            {/* Success indicator with settings button */}
+            {/* Success indicator */}
             <div className="text-center mb-4">
               <div className="flex items-center justify-center gap-4 text-green-400 mb-2">
                 <CheckCircle className="w-5 h-5" />
-                <span>מחובר בהצלחה ל-MIA! (פועל ברקע)</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowMiaSettings(!showMiaSettings)}
-                  className="text-white/60 hover:text-white"
-                >
-                  <Settings className="w-4 h-4" />
-                </Button>
+                <span>מחובר בהצלחה ל-MIA! (מאזין לטאב)</span>
               </div>
-              
-              {/* Optional: Show MIA settings iframe */}
-              {showMiaSettings && (
-                <div className="mt-4">
-                  <iframe
-                    id="miaSettingsFrame"
-                    src="https://online.meetinginsights.audiocodes.com/uigpt/miamarketing/index.php"
-                    className="w-full h-[300px] rounded-xl border-2 border-white/20"
-                    allow="microphone; autoplay"
-                    sandbox="allow-scripts allow-forms allow-same-origin"
-                    title="MIA Settings"
-                  />
-                </div>
-              )}
             </div>
 
             {/* MIA Avatar with Siri Ring */}

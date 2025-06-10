@@ -5,7 +5,7 @@ export async function transcribe(blob: Blob): Promise<string> {
   const formData = new FormData();
   formData.append("file", blob, "audio.webm");
   formData.append("model", "whisper-1");
-  formData.append("language", "en"); // קיבוע לאנגלית
+  formData.append("language", "en"); // Fixed to English
 
   try {
     const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {

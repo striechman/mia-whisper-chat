@@ -6,9 +6,9 @@ export const useTabAudioCapture = () => {
 
   const startTabCapture = async () => {
     try {
-      // Request both video and audio to get proper tab selection dialog
+      // Request audio from tab sharing
       const ms = await navigator.mediaDevices.getDisplayMedia({
-        video: true,  // Need video to trigger tab selection
+        video: true,  // Need video to get tab selection dialog
         audio: {
           echoCancellation: false,
           noiseSuppression: false,
