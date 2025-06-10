@@ -6,9 +6,9 @@ export const useSelfTabAudio = () => {
   
   const capture = async (): Promise<MediaStream> => {
     try {
-      // Request both video and audio to get proper tab selection dialog
+      // Request display media with audio - this will show browser's tab selection dialog
       const mediaStream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,  // Need video to trigger tab selection
+        video: false,  // We only want audio
         audio: {
           echoCancellation: false,
           noiseSuppression: false,
@@ -25,9 +25,6 @@ export const useSelfTabAudio = () => {
       // Create a new stream with only audio
       const audioOnlyStream = new MediaStream(audioTracks);
       setStream(audioOnlyStream);
-      
-      // Stop the video track since we don't need it
-      mediaStream.getVideoTracks().forEach(track => track.stop());
       
       return audioOnlyStream;
     } catch (error) {
