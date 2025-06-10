@@ -1,103 +1,115 @@
 
 'use client';
 
-import { useState, useRef } from 'react';
-import { Mic, MicOff } from 'lucide-react';
+import { useState } from 'react';
+import { Mic, MicOff, Volume2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AnimatedChatBubble } from './animated/AnimatedChatBubble';
 import { AnimatedSiriRing } from './animated/AnimatedSiriRing';
 import { useChat } from '@/lib/supabase/useChat';
-import { useSmartMicrophone } from '@/lib/audio/useSmartMicrophone';
+import { useSimpleRecorder } from '@/lib/audio/useSimpleRecorder';
 import { useMiaAudioStream } from '@/lib/audio/useMiaAudioStream';
 import { useSmartMiaSpeaking } from '@/lib/audio/useSmartMiaSpeaking';
-import { streamTranscribe, recordMicrophoneChunks } from '@/lib/openai/streamingWhisper';
 import { toast } from 'sonner';
 
 export function StreamingVoiceChat() {
-  const { messages, insertMessage, updateDraftMessage, clearDraft } = useChat();
-  const [isRecording, setIsRecording] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const recordingAbortRef = useRef<AbortController | null>(null);
-
-  // Initialize audio hooks
+  const { messages, insertMessage } = useChat();
   const { 
-    stream: micStream, 
-    startMicrophone, 
-    stopMicrophone, 
-    muteMicrophone,
-    isMuted 
-  } = useSmartMicrophone();
-  
+    isRecording, 
+    isProcessing, 
+    startRecording, 
+    stopRecording, 
+    transcribeAudio,
+    cleanup 
+  } = useSimpleRecorder();
+
   const { stream: miaStream } = useMiaAudioStream('miaAudio');
-  
-  const { isMiaSpeaking } = useSmartMiaSpeaking(
-    miaStream,
-    (shouldMute) => muteMicrophone(shouldMute)
-  );
+  const { isMiaSpeaking } = useSmartMiaSpeaking(miaStream);
 
-  const handleStartRecording = async () => {
+  const [permissionGranted, setPermissionGranted] = useState<boolean | null>(null);
+
+  const checkMicrophonePermission = async () => {
     try {
-      setIsRecording(true);
-      setIsProcessing(true);
-      clearDraft();
-      
-      const stream = await startMicrophone();
-      const abortController = new AbortController();
-      recordingAbortRef.current = abortController;
-      
-      let fullTranscript = '';
-      
-      try {
-        // Start streaming transcription
-        for await (const partialText of streamTranscribe(recordMicrophoneChunks(stream))) {
-          if (abortController.signal.aborted) break;
-          
-          fullTranscript += (fullTranscript ? ' ' : '') + partialText;
-          updateDraftMessage(fullTranscript);
-          
-          console.log('Partial transcription:', partialText);
-          console.log('Full transcript so far:', fullTranscript);
-        }
-        
-        // Finalize the message
-        if (fullTranscript.trim() && !abortController.signal.aborted) {
-          clearDraft();
-          await insertMessage('user', fullTranscript.trim());
-          toast.success('Message sent successfully');
-        }
-        
-      } catch (error) {
-        console.error('Error in streaming transcription:', error);
-        toast.error('Transcription failed. Please try again.');
-        clearDraft();
-      }
-      
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach(track => track.stop());
+      setPermissionGranted(true);
+      console.log('✅ Microphone permission granted');
     } catch (error) {
-      console.error('Error starting recording:', error);
-      toast.error('Could not start recording. Please check microphone permissions.');
-    } finally {
-      setIsRecording(false);
-      setIsProcessing(false);
-      stopMicrophone();
-      recordingAbortRef.current = null;
+      setPermissionGranted(false);
+      console.error('❌ Microphone permission denied:', error);
     }
   };
 
-  const handleStopRecording = () => {
-    if (recordingAbortRef.current) {
-      recordingAbortRef.current.abort();
+  const handleMicClick = async () => {
+    try {
+      if (isRecording) {
+        // Stop recording and transcribe
+        console.log('🛑 Stopping recording...');
+        const audioBlob = await stopRecording();
+        
+        if (audioBlob && audioBlob.size > 0) {
+          const transcription = await transcribeAudio(audioBlob);
+          
+          if (transcription.trim()) {
+            await insertMessage('user', transcription.trim());
+            toast.success('הודעה נשלחה בהצלחה');
+          } else {
+            toast.error('לא זוהה טקסט. נסה שוב.');
+          }
+        }
+      } else {
+        // Start recording
+        if (permissionGranted === null) {
+          await checkMicrophonePermission();
+        }
+        
+        if (permissionGranted !== false) {
+          console.log('🎤 Starting recording...');
+          await startRecording();
+          toast.info('מקליט... לחץ שוב כדי לסיים');
+        } else {
+          toast.error('נדרשת הרשאה לשימוש במיקרופון');
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error in mic handler:', error);
+      toast.error(error instanceof Error ? error.message : 'שגיאה לא ידועה');
+      cleanup();
     }
-    setIsRecording(false);
-    setIsProcessing(false);
-    stopMicrophone();
   };
 
-  const handleMicClick = () => {
+  const getStatusText = () => {
+    if (isProcessing) return 'מעבד את ההקלטה...';
+    if (isRecording) return 'מקליט... לחץ כדי לסיים';
+    if (isMiaSpeaking) return 'MIA מדברת...';
+    if (permissionGranted === false) return 'נדרשת הרשאה למיקרופון';
+    return 'לחץ כדי להקליט הודעה';
+  };
+
+  const getMicIcon = () => {
+    if (isProcessing) {
+      return <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />;
+    }
     if (isRecording) {
-      handleStopRecording();
-    } else {
-      handleStartRecording();
+      return <MicOff className="w-6 h-6 text-white" />;
     }
+    if (isMiaSpeaking) {
+      return <Volume2 className="w-6 h-6 text-white" />;
+    }
+    return <Mic className="w-6 h-6 text-white" />;
+  };
+
+  const getButtonStyle = () => {
+    if (isRecording) {
+      return 'bg-red-500 hover:bg-red-600 animate-pulse';
+    }
+    if (isMiaSpeaking) {
+      return 'bg-purple-500 hover:bg-purple-600';
+    }
+    if (isProcessing) {
+      return 'bg-blue-500 cursor-wait';
+    }
+    return 'bg-white/20 hover:bg-white/30';
   };
 
   return (
@@ -120,7 +132,7 @@ export function StreamingVoiceChat() {
       <div className="flex-1 overflow-y-auto px-4 pb-4">
         {messages.length === 0 && (
           <div className="text-center text-white/70 py-8">
-            <p>👋 Hi! I'm MIA. Hold the microphone to start our conversation.</p>
+            <p>👋 שלום! אני MIA. לחץ על המיקרופון כדי להתחיל לדבר איתי.</p>
           </div>
         )}
         {messages.map((message) => (
@@ -132,33 +144,17 @@ export function StreamingVoiceChat() {
       <div className="flex justify-center pb-8">
         <Button
           onClick={handleMicClick}
-          disabled={isProcessing && !isRecording}
-          className={`w-16 h-16 rounded-full transition-all duration-200 ${
-            isRecording
-              ? 'bg-red-500 hover:bg-red-600 animate-pulse'
-              : 'bg-white/20 hover:bg-white/30'
-          } border-2 border-white/30`}
+          disabled={isProcessing}
+          className={`w-16 h-16 rounded-full transition-all duration-200 ${getButtonStyle()} border-2 border-white/30`}
         >
-          {isProcessing && !isRecording ? (
-            <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
-          ) : isRecording ? (
-            <MicOff className="w-6 h-6 text-white" />
-          ) : (
-            <Mic className="w-6 h-6 text-white" />
-          )}
+          {getMicIcon()}
         </Button>
       </div>
 
       {/* Status Text */}
       <div className="text-center pb-4">
         <p className="text-white/60 text-sm">
-          {isProcessing && !isRecording
-            ? 'Processing your message...'
-            : isRecording
-            ? 'Recording... Click to stop'
-            : isMuted
-            ? 'Microphone muted (MIA speaking)'
-            : 'Hold to speak with MIA'}
+          {getStatusText()}
         </p>
       </div>
 
