@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
@@ -157,11 +156,6 @@ export function VoiceChat() {
       
       // Step 2: Start tab capture for MIA
       console.log('Step 2: Starting tab capture...');
-      toast({
-        title: "Tab Selection Required",
-        description: "Please select the tab where MIA is running when the browser asks.",
-      });
-      
       try {
         await startTabCapture();
         console.log('✅ Tab capture started successfully');
@@ -254,20 +248,6 @@ export function VoiceChat() {
     return 'Click to start listening to you and MIA';
   };
 
-  const getInstructionText = () => {
-    if (!isListening) {
-      return (
-        <div className="text-center text-white/70 py-4 px-4 bg-white/10 rounded-lg mb-4">
-          <p className="text-sm font-medium mb-2">🎤 Instructions:</p>
-          <p className="text-xs mb-2">1. Click the button below</p>
-          <p className="text-xs mb-2">2. Allow microphone access</p>
-          <p className="text-xs">3. Select MIA's tab when asked</p>
-        </div>
-      );
-    }
-    return null;
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0F0C29] via-[#24243e] to-[#302B63] flex flex-col items-center justify-center p-4">
       {/* Hidden audio element for MIA */}
@@ -285,9 +265,6 @@ export function VoiceChat() {
             <SiriRing isActive={isMiaSpeaking} />
           </div>
         </div>
-
-        {/* Instructions */}
-        {getInstructionText()}
 
         {/* Chat Messages */}
         <div className="flex-1 overflow-y-auto space-y-4 mb-6 px-2">
