@@ -117,7 +117,7 @@ export function VoiceChat() {
             const transcriptionText = await transcribe(audioBlob);
             
             if (transcriptionText.trim()) {
-              await insertMessage('assistant', transcriptionText);
+              await insertMessage('mia', transcriptionText);
               console.log('MIA message saved:', transcriptionText);
             }
           }
