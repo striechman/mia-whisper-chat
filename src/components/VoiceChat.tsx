@@ -89,8 +89,8 @@ export function VoiceChat() {
       console.log('Starting tab audio capture...');
       
       toast({
-        title: "הוראות חשובות",
-        description: "1) בחר 'הטאב הזה' 2) ודא שמסומן 'שתף אודיו' 3) לחץ 'שתף'",
+        title: "הוראות שיתוף אודיו",
+        description: "כשייפתח החלון: 1) בחר 'Chrome Tab' 2) בחר את הטאב 'MIA Voice Integration Guide' 3) ודא שמסומן 'Also share tab audio' 4) לחץ 'Share'",
       });
       
       const ms = await capture(); // This will show browser's tab selection dialog
@@ -108,19 +108,23 @@ export function VoiceChat() {
       console.log('✅ Tab audio captured successfully');
       
       toast({
-        title: "אודיו הופעל בהצלחה!",
-        description: "כעת התחבר ל-MIA בחלון למטה.",
+        title: "שיתוף אודיו הצליח!",
+        description: "כעת התחבר ל-MIA בחלון למטה ומלא את הפרטים.",
       });
     } catch (error) {
       console.error('❌ Error enabling tab audio:', error);
       
       let errorMessage = "בבקשה נסה שוב";
       if (error instanceof Error) {
-        errorMessage = error.message;
+        if (error.message.includes('No audio track')) {
+          errorMessage = "לא נמצא אודיו. ודא שבחרת טאב עם אודיו ושמסומן 'Also share tab audio'";
+        } else {
+          errorMessage = error.message;
+        }
       }
       
       toast({
-        title: "שגיאה בהפעלת אודיו",
+        title: "שגיאה בשיתוף אודיו",
         description: errorMessage,
         variant: "destructive"
       });
@@ -373,11 +377,15 @@ export function VoiceChat() {
           <div className="flex flex-col items-center gap-6 text-white/80">
             <div className="text-center">
               <h2 className="text-xl font-semibold text-white mb-2">שלב 1: הפעל שיתוף אודיו</h2>
-              <p className="text-white/70 mb-2">לחץ על "הפעל אודיו" כדי לשתף את אודיו הטאב הזה</p>
-              <div className="text-sm text-white/50 space-y-1">
-                <p>🔍 בחר "הטאב הזה" (Current Tab)</p>
-                <p>🔊 ודא שמסומן "שתף אודיו" (Share audio)</p>
-                <p>✅ לחץ "שתף" (Share)</p>
+              <p className="text-white/70 mb-4">לחץ "הפעל אודיו" ובחר את הטאב הנוכחי עם אודיו</p>
+              
+              <div className="text-sm text-white/50 space-y-2 bg-white/5 p-4 rounded-lg max-w-md">
+                <p className="font-semibold text-white/70">הוראות מפורטות:</p>
+                <p>1️⃣ לחץ "הפעל אודיו" למטה</p>
+                <p>2️⃣ בחר "Chrome Tab" (לא Window או Entire Screen)</p>
+                <p>3️⃣ בחר את הטאב "MIA Voice Integration Guide"</p>
+                <p>4️⃣ ✅ ודא שמסומן "Also share tab audio"</p>
+                <p>5️⃣ לחץ "Share"</p>
               </div>
             </div>
             
