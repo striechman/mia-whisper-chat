@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
@@ -62,7 +61,10 @@ export function VoiceChat() {
   );
 
   const startRecording = async () => {
-    if (!micStream) return;
+    if (!micStream) {
+      console.error('No microphone stream available for recording');
+      return;
+    }
     
     try {
       const mediaRecorder = new MediaRecorder(micStream, {
@@ -135,23 +137,40 @@ export function VoiceChat() {
 
   const handleStartListening = async () => {
     try {
-      // Start microphone
-      await startMicrophone();
+      console.log('Starting setup process...');
       
-      // Start tab capture for MIA
-      await startTabCapture();
+      // Step 1: Start microphone
+      console.log('Step 1: Starting microphone...');
+      try {
+        await startMicrophone();
+        console.log('✅ Microphone started successfully');
+      } catch (micError) {
+        console.error('❌ Microphone error:', micError);
+        throw new Error(`Microphone access failed: ${micError.message}`);
+      }
+      
+      // Step 2: Start tab capture for MIA
+      console.log('Step 2: Starting tab capture...');
+      try {
+        await startTabCapture();
+        console.log('✅ Tab capture started successfully');
+      } catch (tabError) {
+        console.error('❌ Tab capture error:', tabError);
+        throw new Error(`Tab capture failed: ${tabError.message}`);
+      }
       
       setIsListening(true);
+      console.log('✅ Setup completed successfully');
       
       toast({
         title: "Listening Started",
         description: "Connected to microphone and MIA audio. Start speaking!",
       });
     } catch (error) {
-      console.error('Error starting listening:', error);
+      console.error('❌ Setup error:', error);
       toast({
         title: "Setup Error",
-        description: "Could not start listening. Please check permissions and try again.",
+        description: error instanceof Error ? error.message : "Could not start listening. Please check permissions and try again.",
         variant: "destructive"
       });
     }
@@ -159,11 +178,15 @@ export function VoiceChat() {
 
   const handleStopListening = () => {
     try {
+      console.log('Stopping listening...');
+      
       // Stop microphone
       stopMicrophone();
+      console.log('✅ Microphone stopped');
       
       // Stop tab capture
       stopTabCapture();
+      console.log('✅ Tab capture stopped');
       
       setIsListening(false);
       setIsRecording(false);
