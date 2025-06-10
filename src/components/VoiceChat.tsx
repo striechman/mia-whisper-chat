@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
@@ -88,6 +87,7 @@ export function VoiceChat() {
     }
   );
 
+  // Auto-clear chat history when starting new chat session
   const clearChatHistory = async () => {
     try {
       const { error } = await supabase
@@ -97,17 +97,9 @@ export function VoiceChat() {
       
       if (error) {
         console.error('Error clearing chat history:', error);
-        toast({
-          title: "שגיאה",
-          description: "לא הצלחנו למחוק את היסטוריית השיחה",
-          variant: "destructive"
-        });
       } else {
         setMessages([]);
-        toast({
-          title: "היסטוריית השיחה נמחקה",
-          description: "השיחה התחילה מחדש",
-        });
+        console.log('Chat history cleared automatically');
       }
     } catch (error) {
       console.error('Error clearing chat history:', error);
@@ -128,6 +120,9 @@ export function VoiceChat() {
   const captureMiaTabAudio = async () => {
     try {
       console.log('Starting MIA tab audio capture...');
+      
+      // Auto-clear chat history when starting new session
+      await clearChatHistory();
       
       toast({
         title: "הוראות שיתוף אודיו",
@@ -476,20 +471,11 @@ export function VoiceChat() {
         {/* Step 2: Voice Chat */}
         {step === 2 && (
           <>
-            {/* Success indicator and Clear Chat button */}
+            {/* Success indicator */}
             <div className="text-center mb-4">
               <div className="flex items-center justify-center gap-4 text-green-400 mb-2">
                 <CheckCircle className="w-5 h-5" />
                 <span>מחובר בהצלחה ל-MIA! (מאזין לטאב)</span>
-                <Button
-                  onClick={clearChatHistory}
-                  variant="outline"
-                  size="sm"
-                  className="ml-4 bg-red-600 hover:bg-red-700 text-white border-red-600"
-                >
-                  <Trash2 className="w-4 h-4 mr-1" />
-                  מחק שיחה
-                </Button>
               </div>
             </div>
 
