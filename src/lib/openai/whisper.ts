@@ -1,50 +1,32 @@
 
+import { supabase } from '@/integrations/supabase/client';
+
 export async function transcribe(blob: Blob): Promise<string> {
   console.log('🎤 Starting transcription process...');
   console.log('📊 Audio blob size:', blob.size, 'bytes');
   console.log('📊 Audio blob type:', blob.type);
   
-  const formData = new FormData();
-  formData.append("file", blob, "audio.webm");
-  formData.append("model", "whisper-1");
-  formData.append("language", "he"); // Hebrew support
-
   try {
-    // Get API key from environment variable - FIXED to use correct variable name
-    const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
+    console.log('🚀 Sending request to Supabase transcribe-audio function...');
     
-    console.log('🔑 Checking API key...');
-    if (!apiKey) {
-      console.error('❌ OpenAI API key not found in environment variables');
-      console.log('📝 Expected variable: VITE_OPENAI_API_KEY');
-      console.log('📝 Available env vars:', Object.keys(import.meta.env));
-      throw new Error('OpenAI API key not found in environment variables. Please set VITE_OPENAI_API_KEY.');
-    }
-    console.log('✅ API key found, length:', apiKey.length);
+    // Create FormData for the edge function
+    const formData = new FormData();
+    formData.append('audio', blob, 'audio.webm');
 
-    console.log('🚀 Sending request to OpenAI Whisper API...');
-    const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
+    // Use Supabase edge function instead of direct OpenAI API call
+    const { data, error } = await supabase.functions.invoke('transcribe-audio', {
       body: formData,
     });
 
-    console.log('📡 Response status:', response.status, response.statusText);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ Whisper API error:', response.status, response.statusText, errorText);
-      throw new Error(`Whisper API error: ${response.status} ${response.statusText} - ${errorText}`);
+    if (error) {
+      console.error('❌ Supabase function error:', error);
+      throw new Error(`Transcription error: ${error.message}`);
     }
 
-    const result = await response.json();
     console.log('✅ Transcription successful!');
-    console.log('📝 Transcription result:', result);
-    console.log('📝 Transcription text:', result.text);
+    console.log('📝 Transcription result:', data);
     
-    const transcriptionText = result.text || '';
+    const transcriptionText = data?.text || '';
     if (transcriptionText.trim()) {
       console.log('✅ Valid transcription received:', transcriptionText);
     } else {
