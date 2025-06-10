@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
@@ -19,8 +20,12 @@ export function VoiceChat() {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isMiaSpeaking, setIsMiaSpeaking] = useState(false);
+  const [isMiaRecording, setIsMiaRecording] = useState(false);
+  
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const miaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const miaAudioChunksRef = useRef<Blob[]>([]);
   const { toast } = useToast();
 
   // Initialize hooks
@@ -28,20 +33,28 @@ export function VoiceChat() {
   const { stream: miaStream, startTabCapture, stopTabCapture } = useTabAudioCapture();
   
   // MIA speaking detection with callback
-  useMiaSpeaking(miaStream, (speaking: boolean) => {
+  useMiaSpeaking(miaStream, async (speaking: boolean) => {
     setIsMiaSpeaking(speaking);
     console.log(speaking ? 'MIA started speaking' : 'MIA stopped speaking');
+    
+    // Start/stop MIA recording based on speaking
+    if (speaking && !isMiaRecording) {
+      await startMiaRecording();
+    } else if (!speaking && isMiaRecording) {
+      await stopMiaRecording();
+    }
   });
   
   // Realtime subscription
   useSupabaseRealtime(setMessages);
 
-  // Connect MIA stream to audio element when available
+  // Connect MIA stream to audio element when available (but mute it to prevent echo)
   useEffect(() => {
     if (!miaStream) return;
     const el = document.getElementById('miaAudio') as HTMLAudioElement;
     if (el) {
       el.srcObject = miaStream;
+      el.muted = true; // Mute to prevent echo
       el.play().catch(console.error);
     }
   }, [miaStream]);
@@ -59,6 +72,65 @@ export function VoiceChat() {
       }
     }
   );
+
+  const startMiaRecording = async () => {
+    if (!miaStream || isMiaRecording) return;
+    
+    try {
+      const mediaRecorder = new MediaRecorder(miaStream, {
+        mimeType: 'audio/webm',
+      });
+      
+      miaAudioChunksRef.current = [];
+      
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          miaAudioChunksRef.current.push(event.data);
+        }
+      };
+      
+      mediaRecorder.start();
+      miaRecorderRef.current = mediaRecorder;
+      setIsMiaRecording(true);
+      
+      console.log('MIA recording started');
+    } catch (error) {
+      console.error('Error starting MIA recording:', error);
+    }
+  };
+
+  const stopMiaRecording = async () => {
+    if (!miaRecorderRef.current || !isMiaRecording) return;
+
+    return new Promise<void>((resolve) => {
+      const recorder = miaRecorderRef.current!;
+      
+      recorder.onstop = async () => {
+        console.log('MIA recording stopped, processing audio...');
+        setIsMiaRecording(false);
+        
+        try {
+          const audioBlob = new Blob(miaAudioChunksRef.current, { type: 'audio/webm' });
+          console.log('MIA audio blob created:', audioBlob.size, 'bytes');
+          
+          if (audioBlob.size > 1000) { // Only transcribe if there's meaningful audio
+            const transcriptionText = await transcribe(audioBlob);
+            
+            if (transcriptionText.trim()) {
+              await insertMessage('assistant', transcriptionText);
+              console.log('MIA message saved:', transcriptionText);
+            }
+          }
+        } catch (error) {
+          console.error('Error processing MIA recording:', error);
+        } finally {
+          resolve();
+        }
+      };
+      
+      recorder.stop();
+    });
+  };
 
   const startRecording = async () => {
     if (!micStream) {
@@ -200,8 +272,14 @@ export function VoiceChat() {
       stopTabCapture();
       console.log('✅ Tab capture stopped');
       
+      // Stop any ongoing recordings
+      if (isMiaRecording) {
+        stopMiaRecording();
+      }
+      
       setIsListening(false);
       setIsRecording(false);
+      setIsMiaRecording(false);
       
       toast({
         title: "Listening Stopped",
