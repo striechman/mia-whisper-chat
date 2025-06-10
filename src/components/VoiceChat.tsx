@@ -1,14 +1,13 @@
-
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Mic, MicOff, Play, Square } from 'lucide-react';
+import { Mic, MicOff, Play, Square, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ChatBubble } from './ChatBubble';
 import { SiriRing } from './SiriRing';
 import { ChatMessage, useSupabaseRealtime, insertMessage } from '@/lib/supabase/chat';
 import { useMicrophoneStream } from '@/lib/audio/useMicrophoneStream';
-import { useTabAudioCapture } from '@/lib/audio/useTabAudioCapture';
+import { useSelfTabAudio } from '@/lib/audio/useSelfTabAudio';
 import { useMiaSpeaking } from '@/lib/audio/useMiaSpeaking';
 import { useVAD } from '@/lib/audio/useVAD';
 import { transcribe } from '@/lib/openai/whisper';
@@ -21,21 +20,31 @@ export function VoiceChat() {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isMiaSpeaking, setIsMiaSpeaking] = useState(false);
   const [isMiaRecording, setIsMiaRecording] = useState(false);
+  const [miaVisible, setMiaVisible] = useState(false);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const miaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const miaAudioChunksRef = useRef<Blob[]>([]);
+  const hiddenAudioRef = useRef<HTMLAudioElement | null>(null);
   const { toast } = useToast();
 
   // Initialize hooks
   const { stream: micStream, startMicrophone, stopMicrophone } = useMicrophoneStream();
-  const { stream: miaStream, startTabCapture, stopTabCapture } = useTabAudioCapture();
+  const { stream: miaStream, capture: captureTab, stopCapture } = useSelfTabAudio();
   
   // MIA speaking detection with callback
   useMiaSpeaking(miaStream, async (speaking: boolean) => {
     setIsMiaSpeaking(speaking);
     console.log(speaking ? 'MIA started speaking' : 'MIA stopped speaking');
+    
+    // Anti-echo: disable microphone when MIA is speaking
+    if (micStream) {
+      const micTrack = micStream.getAudioTracks()[0];
+      if (micTrack) {
+        micTrack.enabled = !speaking;
+      }
+    }
     
     // Start/stop MIA recording based on speaking
     if (speaking && !isMiaRecording) {
@@ -48,14 +57,14 @@ export function VoiceChat() {
   // Realtime subscription
   useSupabaseRealtime(setMessages);
 
-  // Connect MIA stream to audio element when available (but mute it to prevent echo)
+  // Keep MIA stream alive with hidden audio element
   useEffect(() => {
-    if (!miaStream) return;
-    const el = document.getElementById('miaAudio') as HTMLAudioElement;
-    if (el) {
-      el.srcObject = miaStream;
-      el.muted = true; // Mute to prevent echo
-      el.play().catch(console.error);
+    if (miaStream && !hiddenAudioRef.current) {
+      const hiddenAudio = new Audio();
+      hiddenAudio.srcObject = miaStream;
+      hiddenAudio.muted = true;
+      hiddenAudio.play().catch(() => {});
+      hiddenAudioRef.current = hiddenAudio;
     }
   }, [miaStream]);
 
@@ -72,6 +81,30 @@ export function VoiceChat() {
       }
     }
   );
+
+  const startMiaInside = async () => {
+    try {
+      setMiaVisible(true);
+      console.log('Starting MIA inside page...');
+      
+      // Capture this tab's audio
+      const mediaStream = await captureTab();
+      console.log('✅ Tab audio captured successfully');
+      
+      toast({
+        title: "MIA Launched",
+        description: "MIA iframe loaded and audio capture started. You can now log in to MIA.",
+      });
+    } catch (error) {
+      console.error('❌ Error launching MIA:', error);
+      setMiaVisible(false);
+      toast({
+        title: "Tab Capture Error",
+        description: "Need tab-audio permission. Please try again and select 'This Tab'.",
+        variant: "destructive"
+      });
+    }
+  };
 
   const startMiaRecording = async () => {
     if (!miaStream || isMiaRecording) return;
@@ -209,52 +242,19 @@ export function VoiceChat() {
 
   const handleStartListening = async () => {
     try {
-      console.log('Starting setup process...');
-      
-      // Step 1: Start microphone
-      console.log('Step 1: Starting microphone...');
-      try {
-        await startMicrophone();
-        console.log('✅ Microphone started successfully');
-      } catch (micError) {
-        console.error('❌ Microphone error:', micError);
-        toast({
-          title: "Microphone Error",
-          description: "Could not access microphone. Please check permissions.",
-          variant: "destructive"
-        });
-        return;
-      }
-      
-      // Step 2: Start tab capture for MIA
-      console.log('Step 2: Starting tab capture...');
-      try {
-        await startTabCapture();
-        console.log('✅ Tab capture started successfully');
-      } catch (tabError) {
-        console.error('❌ Tab capture error:', tabError);
-        toast({
-          title: "Tab Capture Error",
-          description: "Could not capture MIA's tab. Make sure to select the correct tab and grant permissions.",
-          variant: "destructive"
-        });
-        // Stop microphone if tab capture failed
-        stopMicrophone();
-        return;
-      }
-      
+      console.log('Starting microphone...');
+      await startMicrophone();
       setIsListening(true);
-      console.log('✅ Setup completed successfully');
       
       toast({
         title: "Listening Started",
-        description: "Connected to microphone and MIA audio. Start speaking!",
+        description: "Connected to microphone. Start speaking!",
       });
     } catch (error) {
-      console.error('❌ Setup error:', error);
+      console.error('❌ Microphone error:', error);
       toast({
-        title: "Setup Error",
-        description: "Could not start listening. Please try again.",
+        title: "Microphone Error",
+        description: "Could not access microphone. Please check permissions.",
         variant: "destructive"
       });
     }
@@ -269,7 +269,7 @@ export function VoiceChat() {
       console.log('✅ Microphone stopped');
       
       // Stop tab capture
-      stopTabCapture();
+      stopCapture();
       console.log('✅ Tab capture stopped');
       
       // Stop any ongoing recordings
@@ -280,6 +280,7 @@ export function VoiceChat() {
       setIsListening(false);
       setIsRecording(false);
       setIsMiaRecording(false);
+      setMiaVisible(false);
       
       toast({
         title: "Listening Stopped",
@@ -328,21 +329,43 @@ export function VoiceChat() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0F0C29] via-[#24243e] to-[#302B63] flex flex-col items-center justify-center p-4">
-      {/* Hidden audio element for MIA */}
-      <audio id="miaAudio" className="hidden" />
-      
-      <div className="w-full max-w-md flex flex-col h-[80vh]">
-        {/* MIA Avatar with Siri Ring */}
-        <div className="relative flex justify-center mb-8">
-          <div className="relative w-32 h-32">
-            <img
-              src="/placeholder.svg"
-              alt="MIA"
-              className="w-32 h-32 rounded-full object-cover border-4 border-white/20"
-            />
-            <SiriRing isActive={isMiaSpeaking} />
+      <div className="w-full max-w-4xl flex flex-col h-[90vh]">
+        {/* MIA Launch Button */}
+        {!miaVisible && (
+          <div className="text-center mb-6">
+            <Button
+              onClick={startMiaInside}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold"
+            >
+              <ExternalLink className="w-5 h-5 mr-2" />
+              Launch MIA Inside Page
+            </Button>
           </div>
-        </div>
+        )}
+
+        {/* MIA iframe */}
+        <iframe
+          id="miaFrame"
+          src="https://online.meetinginsights.audiocodes.com/uigpt/miamarketing/index.php"
+          className={`w-full h-[450px] rounded-xl border-2 border-white/20 mt-2 ${miaVisible ? '' : 'hidden'}`}
+          allow="microphone; autoplay"
+          sandbox="allow-scripts allow-forms allow-same-origin"
+          title="MIA Chat Interface"
+        />
+
+        {/* MIA Avatar with Siri Ring */}
+        {miaVisible && (
+          <div className="relative flex justify-center my-6">
+            <div className="relative w-24 h-24">
+              <img
+                src="/placeholder.svg"
+                alt="MIA"
+                className="w-24 h-24 rounded-full object-cover border-4 border-white/20"
+              />
+              <SiriRing isActive={isMiaSpeaking} />
+            </div>
+          </div>
+        )}
 
         {/* Chat Messages */}
         <div className="flex-1 overflow-y-auto space-y-4 mb-6 px-2">
@@ -353,7 +376,7 @@ export function VoiceChat() {
           )}
           {messages.length === 0 && !isListening && (
             <div className="text-center text-white/70 py-8">
-              <p>👋 Hi! I'm MIA. Click the button below to start our conversation.</p>
+              <p>👋 Hi! I'm MIA. Launch me above to start our conversation.</p>
             </div>
           )}
           {messages.map((message) => (
