@@ -23,7 +23,7 @@ export async function insertMessage(role: 'user' | 'mia', content: string) {
     throw error;
   }
 
-  return data;
+  return data as ChatMessage;
 }
 
 export function useSupabaseRealtime(setMessages: (messages: ChatMessage[]) => void) {
@@ -40,7 +40,15 @@ export function useSupabaseRealtime(setMessages: (messages: ChatMessage[]) => vo
         return;
       }
 
-      setMessages(data || []);
+      // Cast the data to ChatMessage type
+      const messages = (data || []).map(item => ({
+        id: item.id,
+        role: item.role as 'user' | 'mia',
+        content: item.content,
+        created_at: item.created_at
+      }));
+
+      setMessages(messages);
     };
 
     fetchMessages();
@@ -57,7 +65,13 @@ export function useSupabaseRealtime(setMessages: (messages: ChatMessage[]) => vo
         },
         (payload) => {
           console.log('New message received:', payload.new);
-          setMessages(prev => [...prev, payload.new as ChatMessage]);
+          const newMessage: ChatMessage = {
+            id: payload.new.id,
+            role: payload.new.role as 'user' | 'mia',
+            content: payload.new.content,
+            created_at: payload.new.created_at
+          };
+          setMessages(prev => [...prev, newMessage]);
         }
       )
       .subscribe();
