@@ -51,8 +51,7 @@ export async function* recordMicrophoneChunks(stream: MediaStream): AsyncGenerat
     }
   };
 
-  mediaRecorder.start();
-  console.log('Started streaming recording with 1-second intervals');
+  console.log('Starting streaming recording with 1-second intervals');
   
   // Start timeslice recording - sends data every 1000ms
   mediaRecorder.start(1000);
