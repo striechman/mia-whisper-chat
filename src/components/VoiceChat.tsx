@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
@@ -38,7 +37,7 @@ export function VoiceChat() {
   
   // MIA speaking detection with callback
   useMiaSpeaking(miaStream, async (speaking: boolean) => {
-    console.log(speaking ? 'MIA started speaking' : 'MIA stopped speaking');
+    console.log(speaking ? '🗣️ MIA started speaking' : '🤐 MIA stopped speaking');
     setIsMiaSpeaking(speaking);
     
     // Anti-echo: disable microphone when MIA is speaking
@@ -71,19 +70,27 @@ export function VoiceChat() {
     }
   }, [miaStream]);
 
-  // VAD for user microphone
+  // VAD for user microphone - FIXED to prevent multiple recordings
   useVAD(
     micStream,
     () => {
-      console.log('User started speaking');
-      if (!isRecording && !isMiaSpeaking) {
+      console.log('🎤 User started speaking');
+      // Only start recording if not already recording and MIA is not speaking
+      if (!isRecording && !isMiaSpeaking && !isTranscribing) {
+        console.log('✅ Starting user recording...');
         startRecording();
+      } else {
+        console.log('⚠️ Skipping recording start - already recording:', isRecording, 'MIA speaking:', isMiaSpeaking, 'transcribing:', isTranscribing);
       }
     },
     async () => {
-      console.log('User stopped speaking - processing recording');
+      console.log('🎤 User stopped speaking - processing recording');
+      // Only stop if currently recording
       if (isRecording) {
+        console.log('✅ Stopping user recording...');
         await stopRecording();
+      } else {
+        console.log('⚠️ Skipping recording stop - not currently recording');
       }
     }
   );
@@ -100,7 +107,7 @@ export function VoiceChat() {
         console.error('Error clearing chat history:', error);
       } else {
         setMessages([]);
-        console.log('Chat history cleared automatically');
+        console.log('✅ Chat history cleared automatically');
       }
     } catch (error) {
       console.error('Error clearing chat history:', error);
@@ -120,7 +127,7 @@ export function VoiceChat() {
 
   const captureMiaTabAudio = async () => {
     try {
-      console.log('Starting MIA tab audio capture...');
+      console.log('🎧 Starting MIA tab audio capture...');
       
       // Auto-clear chat history when starting new session
       await clearChatHistory();
@@ -169,7 +176,10 @@ export function VoiceChat() {
   };
 
   const startMiaRecording = async () => {
-    if (!miaStream || isMiaRecording) return;
+    if (!miaStream || isMiaRecording) {
+      console.log('⚠️ Cannot start MIA recording - no stream or already recording');
+      return;
+    }
     
     try {
       console.log('🎙️ Starting MIA recording...');
@@ -197,7 +207,10 @@ export function VoiceChat() {
   };
 
   const stopMiaRecording = async () => {
-    if (!miaRecorderRef.current || !isMiaRecording) return;
+    if (!miaRecorderRef.current || !isMiaRecording) {
+      console.log('⚠️ Cannot stop MIA recording - no recorder or not recording');
+      return;
+    }
 
     return new Promise<void>((resolve) => {
       const recorder = miaRecorderRef.current!;
@@ -283,7 +296,10 @@ export function VoiceChat() {
   };
 
   const stopRecording = async () => {
-    if (!mediaRecorderRef.current || !isRecording) return;
+    if (!mediaRecorderRef.current || !isRecording) {
+      console.log('⚠️ Cannot stop recording - no recorder or not recording');
+      return;
+    }
 
     return new Promise<void>((resolve) => {
       const recorder = mediaRecorderRef.current!;
@@ -336,7 +352,7 @@ export function VoiceChat() {
 
   const handleStartListening = async () => {
     try {
-      console.log('Starting microphone...');
+      console.log('🎤 Starting microphone...');
       await startMicrophone();
       setIsListening(true);
       
@@ -356,7 +372,7 @@ export function VoiceChat() {
 
   const handleStopListening = () => {
     try {
-      console.log('Stopping listening...');
+      console.log('🛑 Stopping listening...');
       
       stopMicrophone();
       stopTabCapture();
