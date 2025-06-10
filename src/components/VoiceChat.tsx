@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Mic, MicOff, Play, Square, Volume2, CheckCircle } from 'lucide-react';
+import { Mic, MicOff, Play, Square, Volume2, CheckCircle, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ChatBubble } from './ChatBubble';
 import { SiriRing } from './SiriRing';
@@ -21,6 +21,7 @@ export function VoiceChat() {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isMiaSpeaking, setIsMiaSpeaking] = useState(false);
   const [isMiaRecording, setIsMiaRecording] = useState(false);
+  const [showMiaSettings, setShowMiaSettings] = useState(false);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const miaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -99,14 +100,23 @@ export function VoiceChat() {
         description: "הדפדפן מחייב אישור גם בטאב הנוכחי כדי למנוע הקלטה נסתרת. לחץ 'Share This Tab' פעם אחת וזהו.",
       });
       
-      await capture(); // This will show browser's tab selection dialog
-      setStep(2); // Move to chat step
+      const ms = await capture(); // This will show browser's tab selection dialog
+      
+      // Keep audio alive with hidden proxy element
+      const proxyAudio = document.getElementById('miaProxy') as HTMLAudioElement;
+      if (proxyAudio) {
+        proxyAudio.srcObject = ms;
+        proxyAudio.muted = true;
+        proxyAudio.play().catch(() => {});
+      }
+      
+      setStep(2); // Move to chat step - iframe will be hidden
       
       console.log('✅ Tab audio captured successfully');
       
       toast({
-        title: "אודיו הופעל בהצלחה",
-        description: "כעת אתה יכול להתחיל לדבר עם MIA",
+        title: "MIA פועל ברקע - התחל לדבר!",
+        description: "כעת אתה יכול להתחיל לדבר עם MIA. ה-iframe הוסתר אך האודיו ממשיך לפעול.",
       });
     } catch (error) {
       console.error('❌ Error enabling tab audio:', error);
@@ -337,7 +347,10 @@ export function VoiceChat() {
     <div className="min-h-screen bg-gradient-to-br from-[#0F0C29] via-[#24243e] to-[#302B63] flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-4xl flex flex-col h-[90vh]">
         
-        {/* Step 0: MIA Login */}
+        {/* Hidden audio element keeps MIA sound alive */}
+        <audio id="miaProxy" className="hidden" />
+        
+        {/* Step 0: MIA Login - visible only when step < 2 */}
         {step === 0 && (
           <div className="space-y-4 text-white/80">
             <div className="text-center mb-4">
@@ -373,18 +386,54 @@ export function VoiceChat() {
               <Volume2 className="w-6 h-6 mr-2" />
               הפעל אודיו
             </Button>
+            
+            {/* Show iframe for settings if needed */}
+            {showMiaSettings && (
+              <div className="w-full">
+                <iframe
+                  id="miaSettingsFrame"
+                  src="https://online.meetinginsights.audiocodes.com/uigpt/miamarketing/index.php"
+                  className="w-full h-[400px] rounded-xl border-2 border-white/20"
+                  allow="microphone; autoplay"
+                  sandbox="allow-scripts allow-forms allow-same-origin"
+                  title="MIA Settings"
+                />
+              </div>
+            )}
           </div>
         )}
 
         {/* Step 2: Voice Chat */}
         {step === 2 && (
           <>
-            {/* Success indicator */}
+            {/* Success indicator with settings button */}
             <div className="text-center mb-4">
-              <div className="flex items-center justify-center gap-2 text-green-400 mb-2">
+              <div className="flex items-center justify-center gap-4 text-green-400 mb-2">
                 <CheckCircle className="w-5 h-5" />
-                <span>מחובר בהצלחה ל-MIA!</span>
+                <span>מחובר בהצלחה ל-MIA! (פועל ברקע)</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowMiaSettings(!showMiaSettings)}
+                  className="text-white/60 hover:text-white"
+                >
+                  <Settings className="w-4 h-4" />
+                </Button>
               </div>
+              
+              {/* Optional: Show MIA settings iframe */}
+              {showMiaSettings && (
+                <div className="mt-4">
+                  <iframe
+                    id="miaSettingsFrame"
+                    src="https://online.meetinginsights.audiocodes.com/uigpt/miamarketing/index.php"
+                    className="w-full h-[300px] rounded-xl border-2 border-white/20"
+                    allow="microphone; autoplay"
+                    sandbox="allow-scripts allow-forms allow-same-origin"
+                    title="MIA Settings"
+                  />
+                </div>
+              )}
             </div>
 
             {/* MIA Avatar with Siri Ring */}
