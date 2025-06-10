@@ -1,5 +1,12 @@
 
 import { useState, useRef } from 'react';
+import { createClient } from '@supabase/supabase-js';
+
+// יצירת Supabase client
+const supabase = createClient(
+  'https://nzlvrflmawihndfsavpg.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im56bHZyZmxtYXdpaG5kZnNhdnBnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk1ODYyMDEsImV4cCI6MjA2NTE2MjIwMX0.NmW93E0g8ihvK-huXIhYj5JO7FnvjU_1kD18QdsX2Fo'
+);
 
 export function useSimpleRecorder() {
   const [isRecording, setIsRecording] = useState(false);
@@ -92,20 +99,18 @@ export function useSimpleRecorder() {
       const formData = new FormData();
       formData.append('audio', audioBlob, 'recording.webm');
 
-      const response = await fetch('https://nzlvrflmawihndfsavpg.supabase.co/functions/v1/transcribe-audio', {
-        method: 'POST',
+      // שימוש ב-Supabase client במקום fetch ישיר
+      const { data, error } = await supabase.functions.invoke('transcribe-audio', {
         body: formData,
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'שגיאה בתמלול');
+      if (error) {
+        console.error('❌ Supabase function error:', error);
+        throw new Error(error.message || 'שגיאה בתמלול');
       }
 
-      const result = await response.json();
-      console.log('✅ Transcription successful:', result.text);
-      
-      return result.text || '';
+      console.log('✅ Transcription successful:', data.text);
+      return data.text || '';
     } catch (error) {
       console.error('❌ Transcription error:', error);
       throw new Error('שגיאה בתמלול הקול. נסה שוב.');
