@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
@@ -171,7 +172,7 @@ export function VoiceChat() {
     if (!miaStream || isMiaRecording) return;
     
     try {
-      console.log('Starting MIA recording...');
+      console.log('🎙️ Starting MIA recording...');
       const mediaRecorder = new MediaRecorder(miaStream, {
         mimeType: 'audio/webm',
       });
@@ -180,6 +181,7 @@ export function VoiceChat() {
       
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
+          console.log('📊 MIA audio chunk received:', event.data.size, 'bytes');
           miaAudioChunksRef.current.push(event.data);
         }
       };
@@ -188,9 +190,9 @@ export function VoiceChat() {
       miaRecorderRef.current = mediaRecorder;
       setIsMiaRecording(true);
       
-      console.log('MIA recording started');
+      console.log('✅ MIA recording started successfully');
     } catch (error) {
-      console.error('Error starting MIA recording:', error);
+      console.error('❌ Error starting MIA recording:', error);
     }
   };
 
@@ -201,35 +203,38 @@ export function VoiceChat() {
       const recorder = miaRecorderRef.current!;
       
       recorder.onstop = async () => {
-        console.log('MIA recording stopped, processing audio...');
+        console.log('🛑 MIA recording stopped, processing audio...');
         setIsMiaRecording(false);
         
         try {
           const audioBlob = new Blob(miaAudioChunksRef.current, { type: 'audio/webm' });
-          console.log('MIA audio blob created:', audioBlob.size, 'bytes');
+          console.log('📦 MIA audio blob created:', audioBlob.size, 'bytes');
           
           if (audioBlob.size > 1000) {
-            console.log('Transcribing MIA audio...');
+            console.log('🔄 Starting MIA transcription...');
             const transcriptionText = await transcribe(audioBlob);
-            console.log('MIA transcription result:', transcriptionText);
+            console.log('📝 MIA transcription completed:', transcriptionText);
             
             if (transcriptionText.trim()) {
+              console.log('💾 Saving MIA message to database...');
               await insertMessage('mia', transcriptionText);
-              console.log('MIA message saved to database');
+              console.log('✅ MIA message saved successfully');
               
               toast({
                 title: "MIA אמרה",
                 description: transcriptionText,
               });
+            } else {
+              console.log('⚠️ MIA transcription was empty, not saving');
             }
           } else {
-            console.log('MIA audio blob too small, skipping transcription');
+            console.log('⚠️ MIA audio blob too small, skipping transcription');
           }
         } catch (error) {
-          console.error('Error processing MIA recording:', error);
+          console.error('❌ Error processing MIA recording:', error);
           toast({
             title: "שגיאה בעיבוד הקלטת MIA",
-            description: "נסה שוב",
+            description: error instanceof Error ? error.message : "נסה שוב",
             variant: "destructive"
           });
         } finally {
@@ -243,12 +248,12 @@ export function VoiceChat() {
 
   const startRecording = async () => {
     if (!micStream || isRecording) {
-      console.log('Cannot start recording - no mic stream or already recording');
+      console.log('⚠️ Cannot start recording - no mic stream or already recording');
       return;
     }
     
     try {
-      console.log('Starting user recording...');
+      console.log('🎙️ Starting user recording...');
       const mediaRecorder = new MediaRecorder(micStream, {
         mimeType: 'audio/webm',
       });
@@ -257,6 +262,7 @@ export function VoiceChat() {
       
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
+          console.log('📊 User audio chunk received:', event.data.size, 'bytes');
           audioChunksRef.current.push(event.data);
         }
       };
@@ -265,9 +271,9 @@ export function VoiceChat() {
       mediaRecorderRef.current = mediaRecorder;
       setIsRecording(true);
       
-      console.log('User recording started');
+      console.log('✅ User recording started successfully');
     } catch (error) {
-      console.error('Error starting recording:', error);
+      console.error('❌ Error starting recording:', error);
       toast({
         title: "שגיאת הקלטה",
         description: "לא הצלחנו להתחיל הקלטה. נסה שוב.",
@@ -283,34 +289,39 @@ export function VoiceChat() {
       const recorder = mediaRecorderRef.current!;
       
       recorder.onstop = async () => {
-        console.log('User recording stopped, processing audio...');
+        console.log('🛑 User recording stopped, processing audio...');
         setIsRecording(false);
         setIsTranscribing(true);
         
         try {
           const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-          console.log('User audio blob created:', audioBlob.size, 'bytes');
+          console.log('📦 User audio blob created:', audioBlob.size, 'bytes');
           
           if (audioBlob.size > 1000) {
-            console.log('Transcribing user audio...');
+            console.log('🔄 Starting user transcription...');
             const transcriptionText = await transcribe(audioBlob);
-            console.log('User transcription result:', transcriptionText);
+            console.log('📝 User transcription completed:', transcriptionText);
             
             if (transcriptionText.trim()) {
+              console.log('💾 Saving user message to database...');
               await insertMessage('user', transcriptionText);
-              console.log('User message saved to database');
+              console.log('✅ User message saved successfully');
               
               toast({
                 title: "הודעה נשלחה",
                 description: transcriptionText,
               });
+            } else {
+              console.log('⚠️ User transcription was empty, not saving');
             }
+          } else {
+            console.log('⚠️ User audio blob too small, skipping transcription');
           }
         } catch (error) {
-          console.error('Error processing user recording:', error);
+          console.error('❌ Error processing user recording:', error);
           toast({
             title: "שגיאה בעיבוד ההקלטה",
-            description: "לא הצלחנו לעבד את ההקלטה שלך. נסה שוב.",
+            description: error instanceof Error ? error.message : "לא הצלחנו לעבד את ההקלטה שלך. נסה שוב.",
             variant: "destructive"
           });
         } finally {
