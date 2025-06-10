@@ -1,22 +1,50 @@
 
-import { useState } from 'react';
-import { useVAD } from './useVAD';
+import { useState, useEffect } from 'react';
 
-export function useMiaSpeaking(miaStream: MediaStream | null) {
-  const [isMiaSpeaking, setIsMiaSpeaking] = useState(false);
+export function useMiaSpeaking(
+  miaStream: MediaStream | null,
+  onSpeaking: (isSpeaking: boolean) => void,
+  threshold: number = 22  // סף עוצמה
+) {
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
-  const { isSpeaking } = useVAD(
-    miaStream,
-    () => {
-      console.log('MIA started speaking');
-      setIsMiaSpeaking(true);
-    },
-    () => {
-      console.log('MIA stopped speaking');
-      setIsMiaSpeaking(false);
-    },
-    0.02 // Slightly higher threshold for MIA
-  );
+  useEffect(() => {
+    if (!miaStream) return;
+    
+    console.log('🎧 Setting up MIA voice detection...');
+    
+    const audioContext = new AudioContext();
+    const source = audioContext.createMediaStreamSource(miaStream);
+    const analyser = audioContext.createAnalyser();
+    
+    analyser.fftSize = 512;
+    source.connect(analyser);
 
-  return { isMiaSpeaking: isSpeaking };
+    let speaking = false;
+    const data = new Uint8Array(analyser.frequencyBinCount);
+
+    const detectSpeech = () => {
+      analyser.getByteFrequencyData(data);
+      const volume = data.reduce((a, b) => a + b, 0) / data.length;
+      const nowSpeaking = volume > threshold;
+      
+      if (nowSpeaking !== speaking) {
+        speaking = nowSpeaking;
+        setIsSpeaking(speaking);
+        onSpeaking(speaking);    // מיידע את ה-UI
+        console.log(speaking ? '🗣️ MIA started speaking' : '🤐 MIA stopped speaking');
+      }
+      
+      requestAnimationFrame(detectSpeech);
+    };
+    
+    detectSpeech();
+
+    return () => {
+      console.log('🔇 Cleaning up MIA voice detection');
+      audioContext.close();
+    };
+  }, [miaStream, onSpeaking, threshold]);
+
+  return { isSpeaking };
 }

@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Mic, MicOff, Volume2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AnimatedChatBubble } from './animated/AnimatedChatBubble';
@@ -9,7 +9,8 @@ import { AnimatedSiriRing } from './animated/AnimatedSiriRing';
 import { useChat } from '@/lib/supabase/useChat';
 import { useSimpleRecorder } from '@/lib/audio/useSimpleRecorder';
 import { useMiaAudioStream } from '@/lib/audio/useMiaAudioStream';
-import { useSmartMiaSpeaking } from '@/lib/audio/useSmartMiaSpeaking';
+import { useMiaSpeaking } from '@/lib/audio/useMiaSpeaking';
+import { useMiaRecording } from '@/lib/audio/useMiaRecording';
 import { toast } from 'sonner';
 
 export function StreamingVoiceChat() {
@@ -24,14 +25,39 @@ export function StreamingVoiceChat() {
   } = useSimpleRecorder();
 
   const { stream: miaStream } = useMiaAudioStream('miaAudio');
-  const { isMiaSpeaking } = useSmartMiaSpeaking(miaStream);
-
+  const { startRecording: startMiaRecording, stopRecording: stopMiaRecording } = useMiaRecording();
+  
+  const [isMiaSpeaking, setIsMiaSpeaking] = useState(false);
   const [permissionGranted, setPermissionGranted] = useState<boolean | null>(null);
+  const micStreamRef = useRef<MediaStream | null>(null);
+
+  // זיהוי דיבור של MIA וטיפול באנטי-Echo
+  const handleMiaSpeaking = useCallback(async (speaking: boolean) => {
+    setIsMiaSpeaking(speaking);
+    
+    // אנטי-Echo: השתק מיקרופון כשMIA מדברת
+    if (micStreamRef.current) {
+      const micTrack = micStreamRef.current.getAudioTracks()[0];
+      if (micTrack) {
+        micTrack.enabled = !speaking;
+        console.log(speaking ? '🔇 Microphone muted (MIA speaking)' : '🎤 Microphone unmuted');
+      }
+    }
+
+    // הקלטת MIA
+    if (speaking && miaStream) {
+      await startMiaRecording(miaStream);
+    } else if (!speaking) {
+      await stopMiaRecording();
+    }
+  }, [miaStream, startMiaRecording, stopMiaRecording]);
+
+  useMiaSpeaking(miaStream, handleMiaSpeaking);
 
   const checkMicrophonePermission = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach(track => track.stop());
+      micStreamRef.current = stream;
       setPermissionGranted(true);
       console.log('✅ Microphone permission granted');
     } catch (error) {
@@ -63,10 +89,12 @@ export function StreamingVoiceChat() {
           await checkMicrophonePermission();
         }
         
-        if (permissionGranted !== false) {
+        if (permissionGranted !== false && !isMiaSpeaking) {
           console.log('🎤 Starting recording...');
           await startRecording();
           toast.info('מקליט... לחץ שוב כדי לסיים');
+        } else if (isMiaSpeaking) {
+          toast.error('המתן עד שMIA תסיים לדבר');
         } else {
           toast.error('נדרשת הרשאה לשימוש במיקרופון');
         }
@@ -144,7 +172,7 @@ export function StreamingVoiceChat() {
       <div className="flex justify-center pb-8">
         <Button
           onClick={handleMicClick}
-          disabled={isProcessing}
+          disabled={isProcessing || isMiaSpeaking}
           className={`w-16 h-16 rounded-full transition-all duration-200 ${getButtonStyle()} border-2 border-white/30`}
         >
           {getMicIcon()}

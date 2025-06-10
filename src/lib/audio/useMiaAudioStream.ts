@@ -14,18 +14,19 @@ export function useMiaAudioStream(audioElementId: string = 'miaAudio') {
       }
 
       try {
+        // ה-AudioContext חייב להיווצר בעקבות אינטראקציה כלשהי כדי לעבור Autoplay policy
         const ctx = new AudioContext();
         const source = ctx.createMediaElementSource(audioElement);
         const destination = ctx.createMediaStreamDestination();
         
-        source.connect(destination);
-        source.connect(ctx.destination); // Also play through speakers
+        source.connect(destination);        // אל ה-MediaStream
+        source.connect(ctx.destination);    // גם להשמעה רגילה
         
         setAudioContext(ctx);
         setStream(destination.stream);
-        console.log('MIA audio stream setup complete');
+        console.log('✅ MIA audio stream setup complete');
       } catch (error) {
-        console.error('Error setting up MIA audio capture:', error);
+        console.error('❌ Error setting up MIA audio capture:', error);
       }
     };
 
