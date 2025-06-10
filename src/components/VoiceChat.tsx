@@ -1,14 +1,13 @@
-
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Mic, MicOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ChatBubble } from './ChatBubble';
 import { SiriRing } from './SiriRing';
 import { ChatMessage, useSupabaseRealtime, insertMessage } from '@/lib/supabase/chat';
 import { useMicrophoneStream } from '@/lib/audio/useMicrophoneStream';
-import { useMiaAudioStream } from '@/lib/audio/useMiaAudioStream';
+import { useTabAudioCapture } from '@/lib/audio/useTabAudioCapture';
 import { useMiaSpeaking } from '@/lib/audio/useMiaSpeaking';
 import { useVAD } from '@/lib/audio/useVAD';
 import { transcribe } from '@/lib/openai/whisper';
@@ -25,7 +24,7 @@ export function VoiceChat() {
 
   // Initialize hooks
   const { stream: micStream, startMicrophone, stopMicrophone } = useMicrophoneStream();
-  const { stream: miaStream } = useMiaAudioStream('miaAudio');
+  const { stream: miaStream, startTabCapture } = useTabAudioCapture();
   
   // MIA speaking detection with callback
   useMiaSpeaking(miaStream, (speaking: boolean) => {
@@ -35,6 +34,16 @@ export function VoiceChat() {
   
   // Realtime subscription
   useSupabaseRealtime(setMessages);
+
+  // Connect MIA stream to audio element when available
+  useEffect(() => {
+    if (!miaStream) return;
+    const el = document.getElementById('miaAudio') as HTMLAudioElement;
+    if (el) {
+      el.srcObject = miaStream;
+      el.play().catch(console.error);
+    }
+  }, [miaStream]);
 
   // VAD for user microphone
   useVAD(
@@ -49,6 +58,23 @@ export function VoiceChat() {
       }
     }
   );
+
+  const handleConnectMia = async () => {
+    try {
+      await startTabCapture();
+      toast({
+        title: "MIA Audio Connected",
+        description: "Successfully connected to MIA's audio tab",
+      });
+    } catch (error) {
+      console.error('Error connecting to MIA audio:', error);
+      toast({
+        title: "Connection Error",
+        description: "Could not connect to MIA audio. Please try again.",
+        variant: "destructive"
+      });
+    }
+  };
 
   const startRecording = async () => {
     try {
@@ -149,11 +175,23 @@ export function VoiceChat() {
           </div>
         </div>
 
+        {/* Connect MIA Audio Button */}
+        {!miaStream && (
+          <div className="flex justify-center mb-4">
+            <Button onClick={handleConnectMia} variant="secondary">
+              Connect MIA Audio
+            </Button>
+          </div>
+        )}
+
         {/* Chat Messages */}
         <div className="flex-1 overflow-y-auto space-y-4 mb-6 px-2">
           {messages.length === 0 && (
             <div className="text-center text-white/70 py-8">
               <p>👋 Hi! I'm MIA. Press the microphone to start our conversation.</p>
+              {!miaStream && (
+                <p className="mt-2 text-sm">First, connect to MIA's audio tab above.</p>
+              )}
             </div>
           )}
           {messages.map((message) => (
