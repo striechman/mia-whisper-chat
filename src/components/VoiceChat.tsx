@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
@@ -113,8 +114,8 @@ export function VoiceChat() {
       await clearChatHistory();
       
       toast({
-        title: "הוראות שיתוף אודיו",
-        description: "🟣 בחר את הטאב שבו MIA פתוחה ושתף את האודיו כדי להאזין לה כאן",
+        title: "Audio sharing instructions",
+        description: "🟣 Select the tab where MIA is open and share the audio to listen to her here",
       });
       
       const ms = await startTabCapture();
@@ -131,23 +132,23 @@ export function VoiceChat() {
       console.log('✅ MIA tab audio captured successfully');
       
       toast({
-        title: "שיתוף אודיו הצליח!",
-        description: "כעת אתה יכול להתחיל לדבר עם MIA. האזנה לטאב MIA פעילה!",
+        title: "Audio sharing successful!",
+        description: "You can now start talking with MIA. Listening to MIA tab is active!",
       });
     } catch (error) {
       console.error('❌ Error capturing MIA tab audio:', error);
       
-      let errorMessage = "בבקשה נסה שוב";
+      let errorMessage = "Please try again";
       if (error instanceof Error) {
         if (error.message.includes('No audio track')) {
-          errorMessage = "לא נמצא אודיו. ודא שבחרת את הטאב עם MIA ושמסומן 'Also share tab audio'";
+          errorMessage = "No audio found. Make sure you selected the tab with MIA and that 'Also share tab audio' is checked";
         } else {
           errorMessage = error.message;
         }
       }
       
       toast({
-        title: "שגיאה בשיתוף אודיו",
+        title: "Audio sharing error",
         description: errorMessage,
         variant: "destructive"
       });
@@ -161,14 +162,14 @@ export function VoiceChat() {
       setIsListening(true);
       
       toast({
-        title: "המיקרופון הופעל",
-        description: "התחל לדבר עם MIA!",
+        title: "Microphone activated",
+        description: "Start talking with MIA!",
       });
     } catch (error) {
       console.error('❌ Error starting microphone:', error);
       toast({
-        title: "שגיאת מיקרופון",
-        description: "בבקשה אפשר גישה למיקרופון ונסה שוב.",
+        title: "Microphone error",
+        description: "Please allow microphone access and try again.",
         variant: "destructive"
       });
     }
@@ -190,8 +191,8 @@ export function VoiceChat() {
       setStep(0);
       
       toast({
-        title: "הפסקת האזנה",
-        description: "נותק מכל מקורות האודיו.",
+        title: "Stopped listening",
+        description: "Disconnected from all audio sources.",
       });
     } catch (error) {
       console.error('Error stopping listening:', error);

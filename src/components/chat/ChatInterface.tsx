@@ -36,18 +36,18 @@ export function ChatInterface({
 
   const getStatusText = () => {
     if (isTranscribing) {
-      return 'מעבד את ההודעה שלך...';
+      return 'Processing your message...';
     }
     if (isRecording) {
-      return 'מקליט... הפסק לדבר כדי לשלוח';
+      return 'Recording... Stop speaking to send';
     }
     if (isMiaSpeaking) {
-      return 'MIA מדברת...';
+      return 'MIA is speaking...';
     }
     if (isListening) {
-      return 'מאזין... התחל לדבר';
+      return 'Listening... Start speaking';
     }
-    return 'מוכן לצ׳אט עם MIA';
+    return 'Ready to chat with MIA';
   };
 
   return (
@@ -56,7 +56,7 @@ export function ChatInterface({
       <div className="text-center mb-4">
         <div className="flex items-center justify-center gap-4 text-green-400 mb-2">
           <CheckCircle className="w-5 h-5" />
-          <span>מחובר בהצלחה ל-MIA! (מאזין לטאב)</span>
+          <span>Successfully connected to MIA! (listening to tab)</span>
         </div>
       </div>
 
@@ -76,7 +76,7 @@ export function ChatInterface({
       <div className="flex-1 overflow-y-auto space-y-4 mb-6 px-2">
         {messages.length === 0 && (
           <div className="text-center text-white/70 py-8">
-            <p>✅ מוכן! התחל לדבר עם MIA.</p>
+            <p>✅ Ready! Start talking with MIA.</p>
           </div>
         )}
         {messages.map((message) => (

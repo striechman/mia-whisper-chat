@@ -10,16 +10,16 @@ export function AudioSetupStep({ onCaptureAudio }: AudioSetupStepProps) {
   return (
     <div className="flex flex-col items-center gap-6 text-white/80">
       <div className="text-center">
-        <h2 className="text-xl font-semibold text-white mb-2">שלב 2: התחל להאזין ל-MIA</h2>
-        <p className="text-white/70 mb-4">כעת לכוד את האודיו של MIA מהטאב השני</p>
+        <h2 className="text-xl font-semibold text-white mb-2">Step 2: Start listening to MIA</h2>
+        <p className="text-white/70 mb-4">Now capture MIA's audio from the other tab</p>
         
         <div className="text-sm text-white/50 space-y-2 bg-white/5 p-4 rounded-lg max-w-md">
-          <p className="font-semibold text-white/70">הוראות מפורטות:</p>
-          <p>1️⃣ לחץ "התחל להאזין ל-MIA" למטה</p>
-          <p>2️⃣ בחר "Chrome Tab" (לא Window או Entire Screen)</p>
-          <p>3️⃣ בחר את הטאב עם MIA</p>
-          <p>4️⃣ ✅ ודא שמסומן "Also share tab audio"</p>
-          <p>5️⃣ לחץ "Share"</p>
+          <p className="font-semibold text-white/70">Detailed instructions:</p>
+          <p>1️⃣ Click "Start listening to MIA" below</p>
+          <p>2️⃣ Select "Chrome Tab" (not Window or Entire Screen)</p>
+          <p>3️⃣ Choose the tab with MIA</p>
+          <p>4️⃣ ✅ Make sure "Also share tab audio" is checked</p>
+          <p>5️⃣ Click "Share"</p>
         </div>
       </div>
       
@@ -28,11 +28,11 @@ export function AudioSetupStep({ onCaptureAudio }: AudioSetupStepProps) {
         className="bg-green-600 hover:bg-green-700 text-white px-8 py-4 text-lg rounded-lg font-semibold"
       >
         <Volume2 className="w-6 h-6 mr-2" />
-        התחל להאזין ל-MIA
+        Start listening to MIA
       </Button>
       
       <div className="text-xs text-white/40 text-center max-w-md">
-        הדפדפן דורש הרשאה למניעת הקלטה נסתרת - זה נורמלי גם לטאב אחר
+        The browser requires permission to prevent hidden recording - this is normal for other tabs too
       </div>
     </div>
   );

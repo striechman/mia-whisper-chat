@@ -69,7 +69,7 @@ export function useMiaRecording() {
               console.log('✅ MIA message saved successfully');
               
               toast({
-                title: "MIA אמרה",
+                title: "MIA said",
                 description: transcriptionText,
               });
             } else {
@@ -81,8 +81,8 @@ export function useMiaRecording() {
         } catch (error) {
           console.error('❌ Error processing MIA recording:', error);
           toast({
-            title: "שגיאה בעיבוד הקלטת MIA",
-            description: error instanceof Error ? error.message : "נסה שוב",
+            title: "Error processing MIA recording",
+            description: error instanceof Error ? error.message : "Please try again",
             variant: "destructive"
           });
         } finally {

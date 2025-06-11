@@ -40,11 +40,11 @@ export function StreamingVoiceChat() {
   // Realtime subscription
   useSupabaseRealtime(setMessages);
 
-  // זיהוי דיבור של MIA וטיפול באנטי-Echo
+  // MIA speaking detection and anti-echo handling
   const handleMiaSpeaking = useCallback(async (speaking: boolean) => {
     setIsMiaSpeaking(speaking);
     
-    // אנטי-Echo: השתק מיקרופון כשMIA מדברת
+    // Anti-echo: mute microphone when MIA is speaking
     if (micStreamRef.current) {
       const micTrack = micStreamRef.current.getAudioTracks()[0];
       if (micTrack) {
@@ -53,7 +53,7 @@ export function StreamingVoiceChat() {
       }
     }
 
-    // הקלטת MIA
+    // MIA recording
     if (speaking && miaStream) {
       await startMiaRecording(miaStream);
     } else if (!speaking) {
@@ -87,9 +87,9 @@ export function StreamingVoiceChat() {
           
           if (transcription.trim()) {
             await insertMessage('user', transcription.trim());
-            toast.success('הודעה נשלחה בהצלחה');
+            toast.success('Message sent successfully');
           } else {
-            toast.error('לא זוהה טקסט. נסה שוב.');
+            toast.error('No text recognized. Please try again.');
           }
         }
       } else {
@@ -101,26 +101,26 @@ export function StreamingVoiceChat() {
         if (permissionGranted !== false && !isMiaSpeaking) {
           console.log('🎤 Starting recording...');
           await startRecording();
-          toast.info('מקליט... לחץ שוב כדי לסיים');
+          toast.info('Recording... Click again to finish');
         } else if (isMiaSpeaking) {
-          toast.error('המתן עד שMIA תסיים לדבר');
+          toast.error('Wait for MIA to finish speaking');
         } else {
-          toast.error('נדרשת הרשאה לשימוש במיקרופון');
+          toast.error('Microphone permission required');
         }
       }
     } catch (error) {
       console.error('❌ Error in mic handler:', error);
-      toast.error(error instanceof Error ? error.message : 'שגיאה לא ידועה');
+      toast.error(error instanceof Error ? error.message : 'Unknown error');
       cleanup();
     }
   };
 
   const getStatusText = () => {
-    if (isProcessing) return 'מעבד את ההקלטה...';
-    if (isRecording) return 'מקליט... לחץ כדי לסיים';
-    if (isMiaSpeaking) return 'MIA מדברת...';
-    if (permissionGranted === false) return 'נדרשת הרשאה למיקרופון';
-    return 'לחץ כדי להקליט הודעה';
+    if (isProcessing) return 'Processing recording...';
+    if (isRecording) return 'Recording... Click to finish';
+    if (isMiaSpeaking) return 'MIA is speaking...';
+    if (permissionGranted === false) return 'Microphone permission required';
+    return 'Click to record message';
   };
 
   const getMicIcon = () => {
@@ -169,7 +169,7 @@ export function StreamingVoiceChat() {
       <div className="flex-1 overflow-y-auto px-4 pb-4">
         {messages.length === 0 && (
           <div className="text-center text-white/70 py-8">
-            <p>👋 שלום! אני MIA. לחץ על המיקרופון כדי להתחיל לדבר איתי.</p>
+            <p>👋 Hello! I'm MIA. Click the microphone to start talking with me.</p>
           </div>
         )}
         {messages.map((message) => (
