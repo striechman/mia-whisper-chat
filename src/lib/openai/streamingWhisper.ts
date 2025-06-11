@@ -7,6 +7,12 @@ export async function* streamTranscribe(chunks: AsyncIterable<Blob>): AsyncGener
       const formData = new FormData();
       formData.append('file', chunk, 'audio.webm');
       formData.append('model', 'whisper-1');
+      formData.append('language', 'en'); // 🔹 Force English
+      formData.append('temperature', '0'); // Maximum accuracy
+      formData.append(
+        'prompt',
+        'Transcribe the following speech in English only.'
+      );
 
       const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
         method: 'POST',

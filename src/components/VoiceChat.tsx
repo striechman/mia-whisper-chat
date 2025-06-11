@@ -11,8 +11,12 @@ import { useTabAudioCapture } from '@/lib/audio/useTabAudioCapture';
 import { useMiaSpeaking } from '@/lib/audio/useMiaSpeaking';
 import { useVAD } from '@/lib/audio/useVAD';
 import { transcribe } from '@/lib/openai/whisper';
+import { streamTranscribe, recordMicrophoneChunks } from '@/lib/openai/streamingWhisper';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+
+// 🔒 Global recording lock to prevent multiple recordings
+let recordingLock = false;
 
 export function VoiceChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -23,6 +27,7 @@ export function VoiceChat() {
   const [isMiaSpeaking, setIsMiaSpeaking] = useState(false);
   const [isMiaRecording, setIsMiaRecording] = useState(false);
   const [miaTabOpened, setMiaTabOpened] = useState(false);
+  const [draft, setDraft] = useState<string | null>(null); // 📝 Draft message state
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const miaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -70,38 +75,37 @@ export function VoiceChat() {
     }
   }, [miaStream]);
 
-  // VAD for user microphone - FIXED to prevent multiple recordings
+  // VAD for user microphone - IMPROVED with recording lock
   useVAD(
     micStream,
     () => {
       console.log('🎤 User started speaking');
-      // Only start recording if not already recording and MIA is not speaking
-      if (!isRecording && !isMiaSpeaking && !isTranscribing) {
+      // 🔒 Check recording lock and other conditions
+      if (!recordingLock && !isMiaSpeaking && !isRecording && !isTranscribing) {
         console.log('✅ Starting user recording...');
-        startRecording();
+        startStreamingRecording();
       } else {
-        console.log('⚠️ Skipping recording start - already recording:', isRecording, 'MIA speaking:', isMiaSpeaking, 'transcribing:', isTranscribing);
+        console.log('⚠️ Skipping recording start - lock:', recordingLock, 'MIA speaking:', isMiaSpeaking, 'recording:', isRecording, 'transcribing:', isTranscribing);
       }
     },
     async () => {
       console.log('🎤 User stopped speaking - processing recording');
       // Only stop if currently recording
-      if (isRecording) {
+      if (isRecording && recordingLock) {
         console.log('✅ Stopping user recording...');
-        await stopRecording();
+        await stopStreamingRecording();
       } else {
         console.log('⚠️ Skipping recording stop - not currently recording');
       }
     }
   );
 
-  // Auto-clear chat history when starting new chat session
   const clearChatHistory = async () => {
     try {
       const { error } = await supabase
         .from('chat_messages')
         .delete()
-        .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all rows
+        .neq('id', '00000000-0000-0000-0000-000000000000');
       
       if (error) {
         console.error('Error clearing chat history:', error);
@@ -129,7 +133,6 @@ export function VoiceChat() {
     try {
       console.log('🎧 Starting MIA tab audio capture...');
       
-      // Auto-clear chat history when starting new session
       await clearChatHistory();
       
       toast({
@@ -139,7 +142,6 @@ export function VoiceChat() {
       
       const ms = await startTabCapture();
       
-      // Keep audio alive with hidden proxy element
       const proxyAudio = document.getElementById('miaProxy') as HTMLAudioElement;
       if (proxyAudio) {
         proxyAudio.srcObject = ms;
@@ -147,7 +149,7 @@ export function VoiceChat() {
         proxyAudio.play().catch(() => {});
       }
       
-      setStep(2); // Move to chat step
+      setStep(2);
       
       console.log('✅ MIA tab audio captured successfully');
       
@@ -172,6 +174,73 @@ export function VoiceChat() {
         description: errorMessage,
         variant: "destructive"
       });
+    }
+  };
+
+  // 🆕 NEW: Streaming recording with draft bubbles
+  const startStreamingRecording = async () => {
+    if (!micStream || recordingLock) {
+      console.log('⚠️ Cannot start streaming recording - no mic stream or already recording');
+      return;
+    }
+    
+    try {
+      console.log('🎙️ Starting streaming user recording...');
+      recordingLock = true; // 🔒 Set lock
+      setIsRecording(true);
+      setDraft(''); // Initialize draft
+      
+      let accumulatedText = '';
+      
+      // Start streaming transcription
+      for await (const partialText of streamTranscribe(recordMicrophoneChunks(micStream))) {
+        accumulatedText += ' ' + partialText;
+        setDraft(accumulatedText.trim()); // Update draft bubble in real-time
+        console.log('📝 Draft updated:', accumulatedText.trim());
+      }
+      
+      console.log('✅ Streaming recording completed');
+    } catch (error) {
+      console.error('❌ Error in streaming recording:', error);
+      toast({
+        title: "שגיאת הקלטה",
+        description: "לא הצלחנו להתחיל הקלטה. נסה שוב.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const stopStreamingRecording = async () => {
+    if (!recordingLock) {
+      console.log('⚠️ Cannot stop streaming recording - not recording');
+      return;
+    }
+
+    try {
+      console.log('🛑 Stopping streaming recording...');
+      setIsRecording(false);
+      
+      // Save final draft as message
+      if (draft && draft.trim()) {
+        console.log('💾 Saving final message:', draft.trim());
+        await insertMessage('user', draft.trim());
+        
+        toast({
+          title: "הודעה נשלחה",
+          description: draft.trim(),
+        });
+      }
+      
+      setDraft(null); // Clear draft
+    } catch (error) {
+      console.error('❌ Error stopping streaming recording:', error);
+      toast({
+        title: "שגיאה בעיבוד ההקלטה",
+        description: error instanceof Error ? error.message : "לא הצלחנו לעבד את ההקלטה שלך. נסה שוב.",
+        variant: "destructive"
+      });
+    } finally {
+      recordingLock = false; // 🔓 Release lock
     }
   };
 
@@ -259,97 +328,6 @@ export function VoiceChat() {
     });
   };
 
-  const startRecording = async () => {
-    if (!micStream || isRecording) {
-      console.log('⚠️ Cannot start recording - no mic stream or already recording');
-      return;
-    }
-    
-    try {
-      console.log('🎙️ Starting user recording...');
-      const mediaRecorder = new MediaRecorder(micStream, {
-        mimeType: 'audio/webm',
-      });
-      
-      audioChunksRef.current = [];
-      
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          console.log('📊 User audio chunk received:', event.data.size, 'bytes');
-          audioChunksRef.current.push(event.data);
-        }
-      };
-      
-      mediaRecorder.start();
-      mediaRecorderRef.current = mediaRecorder;
-      setIsRecording(true);
-      
-      console.log('✅ User recording started successfully');
-    } catch (error) {
-      console.error('❌ Error starting recording:', error);
-      toast({
-        title: "שגיאת הקלטה",
-        description: "לא הצלחנו להתחיל הקלטה. נסה שוב.",
-        variant: "destructive"
-      });
-    }
-  };
-
-  const stopRecording = async () => {
-    if (!mediaRecorderRef.current || !isRecording) {
-      console.log('⚠️ Cannot stop recording - no recorder or not recording');
-      return;
-    }
-
-    return new Promise<void>((resolve) => {
-      const recorder = mediaRecorderRef.current!;
-      
-      recorder.onstop = async () => {
-        console.log('🛑 User recording stopped, processing audio...');
-        setIsRecording(false);
-        setIsTranscribing(true);
-        
-        try {
-          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-          console.log('📦 User audio blob created:', audioBlob.size, 'bytes');
-          
-          if (audioBlob.size > 1000) {
-            console.log('🔄 Starting user transcription...');
-            const transcriptionText = await transcribe(audioBlob);
-            console.log('📝 User transcription completed:', transcriptionText);
-            
-            if (transcriptionText.trim()) {
-              console.log('💾 Saving user message to database...');
-              await insertMessage('user', transcriptionText);
-              console.log('✅ User message saved successfully');
-              
-              toast({
-                title: "הודעה נשלחה",
-                description: transcriptionText,
-              });
-            } else {
-              console.log('⚠️ User transcription was empty, not saving');
-            }
-          } else {
-            console.log('⚠️ User audio blob too small, skipping transcription');
-          }
-        } catch (error) {
-          console.error('❌ Error processing user recording:', error);
-          toast({
-            title: "שגיאה בעיבוד ההקלטה",
-            description: error instanceof Error ? error.message : "לא הצלחנו לעבד את ההקלטה שלך. נסה שוב.",
-            variant: "destructive"
-          });
-        } finally {
-          setIsTranscribing(false);
-          resolve();
-        }
-      };
-      
-      recorder.stop();
-    });
-  };
-
   const handleStartListening = async () => {
     try {
       console.log('🎤 Starting microphone...');
@@ -381,11 +359,14 @@ export function VoiceChat() {
         stopMiaRecording();
       }
       
+      // Reset all states
       setIsListening(false);
       setIsRecording(false);
       setIsMiaRecording(false);
+      setDraft(null);
       setStep(0);
       setMiaTabOpened(false);
+      recordingLock = false; // 🔓 Release lock
       
       toast({
         title: "הפסקת האזנה",
@@ -439,7 +420,6 @@ export function VoiceChat() {
         {/* Hidden audio element keeps MIA sound alive */}
         <audio id="miaProxy" className="hidden" />
         
-        {/* Step 0: Open MIA in New Tab */}
         {step === 0 && (
           <div className="flex flex-col items-center gap-6 text-white/80">
             <div className="text-center">
@@ -464,7 +444,6 @@ export function VoiceChat() {
           </div>
         )}
 
-        {/* Step 1: Capture MIA Audio */}
         {step === 1 && (
           <div className="flex flex-col items-center gap-6 text-white/80">
             <div className="text-center">
@@ -495,7 +474,7 @@ export function VoiceChat() {
           </div>
         )}
 
-        {/* Step 2: Voice Chat */}
+        {/* Step 2: Voice Chat with IMPROVED draft bubble */}
         {step === 2 && (
           <>
             {/* Success indicator */}
@@ -518,9 +497,9 @@ export function VoiceChat() {
               </div>
             </div>
 
-            {/* Chat Messages */}
+            {/* Chat Messages with Draft Bubble */}
             <div className="flex-1 overflow-y-auto space-y-4 mb-6 px-2">
-              {messages.length === 0 && (
+              {messages.length === 0 && !draft && (
                 <div className="text-center text-white/70 py-8">
                   <p>✅ מוכן! התחל לדבר עם MIA.</p>
                 </div>
@@ -528,6 +507,18 @@ export function VoiceChat() {
               {messages.map((message) => (
                 <ChatBubble key={message.id} message={message} />
               ))}
+              {/* 📝 Draft bubble - shows real-time transcription */}
+              {draft && (
+                <div className="flex justify-end mb-4">
+                  <div className="max-w-xs lg:max-w-md px-4 py-2 rounded-3xl bg-emerald-500/70 text-white shadow-lg opacity-80">
+                    <p className="text-sm">
+                      🎤 {draft}
+                      <span className="animate-pulse">|</span>
+                    </p>
+                    <p className="text-xs opacity-70 mt-1">הקלטה...</p>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Main Control Button */}

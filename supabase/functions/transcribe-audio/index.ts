@@ -23,11 +23,17 @@ serve(async (req) => {
 
     console.log('Received audio file:', audioFile.size, 'bytes');
 
-    // Create FormData for OpenAI
+    // Create FormData for OpenAI with improved settings
     const openaiFormData = new FormData();
     openaiFormData.append('file', audioFile, 'audio.webm');
     openaiFormData.append('model', 'whisper-1');
-    openaiFormData.append('language', 'he'); // Hebrew support
+    openaiFormData.append('language', 'en'); // 🔹 Force English transcription
+    openaiFormData.append('temperature', '0'); // Maximum accuracy
+    openaiFormData.append(
+      'prompt',
+      'Transcribe the following speech in clear, fluent English. ' +
+      'Return the raw transcript only, no translation to Hebrew.'
+    );
 
     const openaiResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',
