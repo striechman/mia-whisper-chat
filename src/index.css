@@ -38,3 +38,29 @@
 .animate-pulse-custom {
   animation: pulse 1.2s ease-in-out infinite;
 }
+
+/* Fix toast text colors for better readability */
+.toaster .toast[data-type="error"] {
+  @apply text-white !important;
+}
+
+.toaster .toast[data-type="error"] .toast-description {
+  @apply text-white opacity-90 !important;
+}
+
+.toaster .toast[data-type="error"] .toast-title {
+  @apply text-white font-semibold !important;
+}
+
+/* Make sure all toast text is readable */
+.toast {
+  @apply text-white !important;
+}
+
+.toast .toast-description {
+  @apply text-white opacity-90 !important;
+}
+
+.toast .toast-title {
+  @apply text-white font-semibold !important;
+}
