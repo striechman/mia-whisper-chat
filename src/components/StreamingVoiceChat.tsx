@@ -31,7 +31,7 @@ export function StreamingVoiceChat() {
   } = useSimpleRecorder();
 
   const { stream: miaStream } = useMiaAudioStream('miaAudio');
-  const { startRecording: startMiaRecording, stopRecording: stopMiaRecording } = useMiaRecording();
+  const { startMiaRecording, stopMiaRecording } = useMiaRecording();
   
   const [isMiaSpeaking, setIsMiaSpeaking] = useState(false);
   const [permissionGranted, setPermissionGranted] = useState<boolean | null>(null);
@@ -40,7 +40,7 @@ export function StreamingVoiceChat() {
   // Realtime subscription
   useSupabaseRealtime(setMessages);
 
-  // زيهوי דיבור של MIA וטיפול באנטי-Echo
+  // זיהוי דיבור של MIA וטיפול באנטי-Echo
   const handleMiaSpeaking = useCallback(async (speaking: boolean) => {
     setIsMiaSpeaking(speaking);
     
