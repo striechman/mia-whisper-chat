@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
@@ -177,7 +178,7 @@ export function VoiceChat() {
     }
   };
 
-  // 🆕 NEW: Streaming recording with draft bubbles
+  // 🆕 NEW: Streaming recording with draft bubbles - FIXED to use Supabase Edge Function
   const startStreamingRecording = async () => {
     if (!micStream || recordingLock) {
       console.log('⚠️ Cannot start streaming recording - no mic stream or already recording');
@@ -192,7 +193,7 @@ export function VoiceChat() {
       
       let accumulatedText = '';
       
-      // Start streaming transcription
+      // Start streaming transcription using Supabase Edge Function
       for await (const partialText of streamTranscribe(recordMicrophoneChunks(micStream))) {
         accumulatedText += ' ' + partialText;
         setDraft(accumulatedText.trim()); // Update draft bubble in real-time

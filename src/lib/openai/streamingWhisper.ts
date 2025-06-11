@@ -1,35 +1,27 @@
 
+import { supabase } from '@/integrations/supabase/client';
+
 export async function* streamTranscribe(chunks: AsyncIterable<Blob>): AsyncGenerator<string, void, unknown> {
   for await (const chunk of chunks) {
     try {
       console.log('Processing audio chunk:', chunk.size, 'bytes');
       
+      // Create FormData for the Supabase edge function
       const formData = new FormData();
-      formData.append('file', chunk, 'audio.webm');
-      formData.append('model', 'whisper-1');
-      formData.append('language', 'en'); // 🔹 Force English
-      formData.append('temperature', '0'); // Maximum accuracy
-      formData.append(
-        'prompt',
-        'Transcribe the following speech in English only.'
-      );
+      formData.append('audio', chunk, 'audio.webm');
 
-      const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${process.env.NEXT_PUBLIC_OPENAI_API_KEY}`,
-        },
+      // Use Supabase edge function instead of direct OpenAI API call
+      const { data, error } = await supabase.functions.invoke('transcribe-audio', {
         body: formData,
       });
 
-      if (!response.ok) {
-        console.error('Whisper API error:', response.status, response.statusText);
+      if (error) {
+        console.error('Supabase function error:', error);
         continue; // Skip this chunk and continue with next
       }
 
-      const result = await response.json();
-      if (result.text && result.text.trim()) {
-        yield result.text.trim();
+      if (data?.text && data.text.trim()) {
+        yield data.text.trim();
       }
     } catch (error) {
       console.error('Error in streaming transcription:', error);
