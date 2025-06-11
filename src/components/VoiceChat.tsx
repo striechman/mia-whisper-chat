@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
@@ -11,28 +10,20 @@ import { useMicrophoneStream } from '@/lib/audio/useMicrophoneStream';
 import { useTabAudioCapture } from '@/lib/audio/useTabAudioCapture';
 import { useMiaSpeaking } from '@/lib/audio/useMiaSpeaking';
 import { useVAD } from '@/lib/audio/useVAD';
+import { useUserRecording } from '@/lib/audio/useUserRecording';
 import { transcribe } from '@/lib/openai/whisper';
-import { streamTranscribe, recordMicrophoneChunks } from '@/lib/openai/streamingWhisper';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-
-// 🔒 Global recording lock to prevent multiple recordings
-let recordingLock = false;
 
 export function VoiceChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [step, setStep] = useState<0 | 1 | 2>(0); // 0=open-mia, 1=capture-audio, 2=chat
   const [isListening, setIsListening] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [isTranscribing, setIsTranscribing] = useState(false);
   const [isMiaSpeaking, setIsMiaSpeaking] = useState(false);
   const [isMiaRecording, setIsMiaRecording] = useState(false);
   const [miaTabOpened, setMiaTabOpened] = useState(false);
-  const [draft, setDraft] = useState<string | null>(null); // 📝 Draft message state
   
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const miaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
   const miaAudioChunksRef = useRef<Blob[]>([]);
   const hiddenAudioRef = useRef<HTMLAudioElement | null>(null);
   const { toast } = useToast();
@@ -40,6 +31,7 @@ export function VoiceChat() {
   // Initialize hooks
   const { stream: micStream, startMicrophone, stopMicrophone } = useMicrophoneStream();
   const { stream: miaStream, startTabCapture, stopTabCapture } = useTabAudioCapture();
+  const { isRecording, isTranscribing, startRecording, stopRecording } = useUserRecording();
   
   // MIA speaking detection with callback
   useMiaSpeaking(miaStream, async (speaking: boolean) => {
@@ -76,25 +68,23 @@ export function VoiceChat() {
     }
   }, [miaStream]);
 
-  // VAD for user microphone - IMPROVED with recording lock
+  // VAD for user microphone - SIMPLIFIED
   useVAD(
     micStream,
     () => {
       console.log('🎤 User started speaking');
-      // 🔒 Check recording lock and other conditions
-      if (!recordingLock && !isMiaSpeaking && !isRecording && !isTranscribing) {
+      if (!isMiaSpeaking && !isRecording && !isTranscribing && micStream) {
         console.log('✅ Starting user recording...');
-        startStreamingRecording();
+        startRecording(micStream);
       } else {
-        console.log('⚠️ Skipping recording start - lock:', recordingLock, 'MIA speaking:', isMiaSpeaking, 'recording:', isRecording, 'transcribing:', isTranscribing);
+        console.log('⚠️ Skipping recording start - MIA speaking:', isMiaSpeaking, 'recording:', isRecording, 'transcribing:', isTranscribing);
       }
     },
     async () => {
       console.log('🎤 User stopped speaking - processing recording');
-      // Only stop if currently recording
-      if (isRecording && recordingLock) {
+      if (isRecording) {
         console.log('✅ Stopping user recording...');
-        await stopStreamingRecording();
+        await stopRecording();
       } else {
         console.log('⚠️ Skipping recording stop - not currently recording');
       }
@@ -178,73 +168,6 @@ export function VoiceChat() {
     }
   };
 
-  // 🆕 NEW: Streaming recording with draft bubbles - FIXED to use Supabase Edge Function
-  const startStreamingRecording = async () => {
-    if (!micStream || recordingLock) {
-      console.log('⚠️ Cannot start streaming recording - no mic stream or already recording');
-      return;
-    }
-    
-    try {
-      console.log('🎙️ Starting streaming user recording...');
-      recordingLock = true; // 🔒 Set lock
-      setIsRecording(true);
-      setDraft(''); // Initialize draft
-      
-      let accumulatedText = '';
-      
-      // Start streaming transcription using Supabase Edge Function
-      for await (const partialText of streamTranscribe(recordMicrophoneChunks(micStream))) {
-        accumulatedText += ' ' + partialText;
-        setDraft(accumulatedText.trim()); // Update draft bubble in real-time
-        console.log('📝 Draft updated:', accumulatedText.trim());
-      }
-      
-      console.log('✅ Streaming recording completed');
-    } catch (error) {
-      console.error('❌ Error in streaming recording:', error);
-      toast({
-        title: "שגיאת הקלטה",
-        description: "לא הצלחנו להתחיל הקלטה. נסה שוב.",
-        variant: "destructive"
-      });
-    }
-  };
-
-  const stopStreamingRecording = async () => {
-    if (!recordingLock) {
-      console.log('⚠️ Cannot stop streaming recording - not recording');
-      return;
-    }
-
-    try {
-      console.log('🛑 Stopping streaming recording...');
-      setIsRecording(false);
-      
-      // Save final draft as message
-      if (draft && draft.trim()) {
-        console.log('💾 Saving final message:', draft.trim());
-        await insertMessage('user', draft.trim());
-        
-        toast({
-          title: "הודעה נשלחה",
-          description: draft.trim(),
-        });
-      }
-      
-      setDraft(null); // Clear draft
-    } catch (error) {
-      console.error('❌ Error stopping streaming recording:', error);
-      toast({
-        title: "שגיאה בעיבוד ההקלטה",
-        description: error instanceof Error ? error.message : "לא הצלחנו לעבד את ההקלטה שלך. נסה שוב.",
-        variant: "destructive"
-      });
-    } finally {
-      recordingLock = false; // 🔓 Release lock
-    }
-  };
-
   const startMiaRecording = async () => {
     if (!miaStream || isMiaRecording) {
       console.log('⚠️ Cannot start MIA recording - no stream or already recording');
@@ -293,7 +216,7 @@ export function VoiceChat() {
           const audioBlob = new Blob(miaAudioChunksRef.current, { type: 'audio/webm' });
           console.log('📦 MIA audio blob created:', audioBlob.size, 'bytes');
           
-          if (audioBlob.size > 1000) {
+          if (audioBlob.size > 2000) {
             console.log('🔄 Starting MIA transcription...');
             const transcriptionText = await transcribe(audioBlob);
             console.log('📝 MIA transcription completed:', transcriptionText);
@@ -362,12 +285,9 @@ export function VoiceChat() {
       
       // Reset all states
       setIsListening(false);
-      setIsRecording(false);
       setIsMiaRecording(false);
-      setDraft(null);
       setStep(0);
       setMiaTabOpened(false);
-      recordingLock = false; // 🔓 Release lock
       
       toast({
         title: "הפסקת האזנה",
@@ -475,7 +395,7 @@ export function VoiceChat() {
           </div>
         )}
 
-        {/* Step 2: Voice Chat with IMPROVED draft bubble */}
+        {/* Step 2: Voice Chat - SIMPLIFIED WITHOUT DRAFT */}
         {step === 2 && (
           <>
             {/* Success indicator */}
@@ -498,9 +418,9 @@ export function VoiceChat() {
               </div>
             </div>
 
-            {/* Chat Messages with Draft Bubble */}
+            {/* Chat Messages - NO MORE DRAFT BUBBLE */}
             <div className="flex-1 overflow-y-auto space-y-4 mb-6 px-2">
-              {messages.length === 0 && !draft && (
+              {messages.length === 0 && (
                 <div className="text-center text-white/70 py-8">
                   <p>✅ מוכן! התחל לדבר עם MIA.</p>
                 </div>
@@ -508,18 +428,6 @@ export function VoiceChat() {
               {messages.map((message) => (
                 <ChatBubble key={message.id} message={message} />
               ))}
-              {/* 📝 Draft bubble - shows real-time transcription */}
-              {draft && (
-                <div className="flex justify-end mb-4">
-                  <div className="max-w-xs lg:max-w-md px-4 py-2 rounded-3xl bg-emerald-500/70 text-white shadow-lg opacity-80">
-                    <p className="text-sm">
-                      🎤 {draft}
-                      <span className="animate-pulse">|</span>
-                    </p>
-                    <p className="text-xs opacity-70 mt-1">הקלטה...</p>
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* Main Control Button */}

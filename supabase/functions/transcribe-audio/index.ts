@@ -16,8 +16,8 @@ serve(async (req) => {
   try {
     console.log('📥 Transcribe request received');
     
-    // Check if OpenAI API key is available
-    const openaiApiKey = Deno.env.get('VITE_OPENAI_API_KEY');
+    // Check if OpenAI API key is available - FIXED: use correct variable name
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
     if (!openaiApiKey) {
       console.error('❌ OpenAI API key not found in environment');
       throw new Error('OpenAI API key not configured');
@@ -35,17 +35,20 @@ serve(async (req) => {
 
     console.log('📊 Received audio file:', audioFile.size, 'bytes, type:', audioFile.type);
 
+    // Skip very small files that won't have meaningful content
+    if (audioFile.size < 2000) {
+      console.log('⚠️ Audio file too small, returning empty result');
+      return new Response(JSON.stringify({ text: '' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // Create FormData for OpenAI with improved settings
     const openaiFormData = new FormData();
     openaiFormData.append('file', audioFile, 'audio.webm');
     openaiFormData.append('model', 'whisper-1');
-    openaiFormData.append('language', 'en'); // Force English transcription
+    openaiFormData.append('language', 'he'); // Hebrew for better accuracy
     openaiFormData.append('temperature', '0'); // Maximum accuracy
-    openaiFormData.append(
-      'prompt',
-      'Transcribe the following speech in clear, fluent English. ' +
-      'Return the raw transcript only, no translation to Hebrew.'
-    );
 
     console.log('🚀 Sending request to OpenAI API...');
 

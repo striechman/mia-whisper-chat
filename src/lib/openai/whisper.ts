@@ -13,7 +13,7 @@ export async function transcribe(blob: Blob): Promise<string> {
     const formData = new FormData();
     formData.append('audio', blob, 'audio.webm');
 
-    // Use Supabase edge function instead of direct OpenAI API call
+    // Use Supabase edge function with proper error handling
     const { data, error } = await supabase.functions.invoke('transcribe-audio', {
       body: formData,
     });
@@ -36,6 +36,7 @@ export async function transcribe(blob: Blob): Promise<string> {
     return transcriptionText;
   } catch (error) {
     console.error('❌ Transcription error:', error);
-    throw error;
+    // Don't throw error, return empty string to avoid breaking the flow
+    return '';
   }
 }
