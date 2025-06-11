@@ -1,6 +1,13 @@
 
 import { motion } from 'framer-motion';
-import { ChatMessage } from '@/lib/supabase/useChat';
+
+interface ChatMessage {
+  id: string;
+  role: 'user' | 'mia';
+  content: string;
+  created_at: string;
+  isOptimistic?: boolean;
+}
 
 interface AnimatedChatBubbleProps {
   message: ChatMessage;

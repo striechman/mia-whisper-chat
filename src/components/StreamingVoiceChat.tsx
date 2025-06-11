@@ -6,15 +6,21 @@ import { Mic, MicOff, Volume2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AnimatedChatBubble } from './animated/AnimatedChatBubble';
 import { AnimatedSiriRing } from './animated/AnimatedSiriRing';
-import { useChat } from '@/lib/supabase/useChat';
+import { useSupabaseRealtime, insertMessage } from '@/lib/supabase/chat';
 import { useSimpleRecorder } from '@/lib/audio/useSimpleRecorder';
 import { useMiaAudioStream } from '@/lib/audio/useMiaAudioStream';
 import { useMiaSpeaking } from '@/lib/audio/useMiaSpeaking';
-import { useMiaRecording } from '@/lib/audio/useMiaRecording';
+import { useMiaRecording } from '@/hooks/useMiaRecording';
 import { toast } from 'sonner';
 
 export function StreamingVoiceChat() {
-  const { messages, insertMessage } = useChat();
+  const [messages, setMessages] = useState<Array<{
+    id: string;
+    role: 'user' | 'mia';
+    content: string;
+    created_at: string;
+  }>>([]);
+  
   const { 
     isRecording, 
     isProcessing, 
@@ -31,7 +37,10 @@ export function StreamingVoiceChat() {
   const [permissionGranted, setPermissionGranted] = useState<boolean | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
 
-  // זיהוי דיבור של MIA וטיפול באנטי-Echo
+  // Realtime subscription
+  useSupabaseRealtime(setMessages);
+
+  // زيهوי דיבור של MIA וטיפול באנטי-Echo
   const handleMiaSpeaking = useCallback(async (speaking: boolean) => {
     setIsMiaSpeaking(speaking);
     
