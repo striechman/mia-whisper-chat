@@ -1,37 +1,34 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Mic, MicOff, Play, Square, Volume2, CheckCircle, ExternalLink, Trash2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { ChatBubble } from './ChatBubble';
-import { SiriRing } from './SiriRing';
-import { ChatMessage, useSupabaseRealtime, insertMessage } from '@/lib/supabase/chat';
+import { ChatMessage, useSupabaseRealtime } from '@/lib/supabase/chat';
 import { useMicrophoneStream } from '@/lib/audio/useMicrophoneStream';
 import { useTabAudioCapture } from '@/lib/audio/useTabAudioCapture';
 import { useMiaSpeaking } from '@/lib/audio/useMiaSpeaking';
 import { useVAD } from '@/lib/audio/useVAD';
 import { useUserRecording } from '@/lib/audio/useUserRecording';
-import { transcribe } from '@/lib/openai/whisper';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { useChatSteps } from '@/hooks/useChatSteps';
+import { useMiaRecording } from '@/hooks/useMiaRecording';
+import { InitialStep } from './chat/InitialStep';
+import { AudioSetupStep } from './chat/AudioSetupStep';
+import { ChatInterface } from './chat/ChatInterface';
 
 export function VoiceChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [step, setStep] = useState<0 | 1 | 2>(0); // 0=open-mia, 1=capture-audio, 2=chat
   const [isListening, setIsListening] = useState(false);
   const [isMiaSpeaking, setIsMiaSpeaking] = useState(false);
-  const [isMiaRecording, setIsMiaRecording] = useState(false);
-  const [miaTabOpened, setMiaTabOpened] = useState(false);
   
-  const miaRecorderRef = useRef<MediaRecorder | null>(null);
-  const miaAudioChunksRef = useRef<Blob[]>([]);
   const hiddenAudioRef = useRef<HTMLAudioElement | null>(null);
   const { toast } = useToast();
 
-  // Initialize hooks
+  // Custom hooks
+  const { step, openMiaInNewTab, setStep } = useChatSteps();
   const { stream: micStream, startMicrophone, stopMicrophone } = useMicrophoneStream();
   const { stream: miaStream, startTabCapture, stopTabCapture } = useTabAudioCapture();
   const { isRecording, isTranscribing, startRecording, stopRecording } = useUserRecording();
+  const { isMiaRecording, startMiaRecording, stopMiaRecording } = useMiaRecording();
   
   // MIA speaking detection with callback
   useMiaSpeaking(miaStream, async (speaking: boolean) => {
@@ -47,8 +44,8 @@ export function VoiceChat() {
     }
     
     // Start/stop MIA recording based on speaking
-    if (speaking && !isMiaRecording) {
-      await startMiaRecording();
+    if (speaking && !isMiaRecording && miaStream) {
+      await startMiaRecording(miaStream);
     } else if (!speaking && isMiaRecording) {
       await stopMiaRecording();
     }
@@ -68,7 +65,7 @@ export function VoiceChat() {
     }
   }, [miaStream]);
 
-  // VAD for user microphone - SIMPLIFIED
+  // VAD for user microphone
   useVAD(
     micStream,
     () => {
@@ -107,17 +104,6 @@ export function VoiceChat() {
     } catch (error) {
       console.error('Error clearing chat history:', error);
     }
-  };
-
-  const openMiaInNewTab = () => {
-    window.open("https://online.meetinginsights.audiocodes.com/uigpt/miamarketing/index.php", "_blank");
-    setMiaTabOpened(true);
-    setStep(1);
-    
-    toast({
-      title: "MIA נפתחה בטאב חדש!",
-      description: "מלא את הפרטים בטאב החדש ולחץ 'Start'. אחר כך חזור לכאן ולחץ 'התחל להאזין ל-MIA'.",
-    });
   };
 
   const captureMiaTabAudio = async () => {
@@ -168,90 +154,6 @@ export function VoiceChat() {
     }
   };
 
-  const startMiaRecording = async () => {
-    if (!miaStream || isMiaRecording) {
-      console.log('⚠️ Cannot start MIA recording - no stream or already recording');
-      return;
-    }
-    
-    try {
-      console.log('🎙️ Starting MIA recording...');
-      const mediaRecorder = new MediaRecorder(miaStream, {
-        mimeType: 'audio/webm',
-      });
-      
-      miaAudioChunksRef.current = [];
-      
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          console.log('📊 MIA audio chunk received:', event.data.size, 'bytes');
-          miaAudioChunksRef.current.push(event.data);
-        }
-      };
-      
-      mediaRecorder.start();
-      miaRecorderRef.current = mediaRecorder;
-      setIsMiaRecording(true);
-      
-      console.log('✅ MIA recording started successfully');
-    } catch (error) {
-      console.error('❌ Error starting MIA recording:', error);
-    }
-  };
-
-  const stopMiaRecording = async () => {
-    if (!miaRecorderRef.current || !isMiaRecording) {
-      console.log('⚠️ Cannot stop MIA recording - no recorder or not recording');
-      return;
-    }
-
-    return new Promise<void>((resolve) => {
-      const recorder = miaRecorderRef.current!;
-      
-      recorder.onstop = async () => {
-        console.log('🛑 MIA recording stopped, processing audio...');
-        setIsMiaRecording(false);
-        
-        try {
-          const audioBlob = new Blob(miaAudioChunksRef.current, { type: 'audio/webm' });
-          console.log('📦 MIA audio blob created:', audioBlob.size, 'bytes');
-          
-          if (audioBlob.size > 2000) {
-            console.log('🔄 Starting MIA transcription...');
-            const transcriptionText = await transcribe(audioBlob);
-            console.log('📝 MIA transcription completed:', transcriptionText);
-            
-            if (transcriptionText.trim()) {
-              console.log('💾 Saving MIA message to database...');
-              await insertMessage('mia', transcriptionText);
-              console.log('✅ MIA message saved successfully');
-              
-              toast({
-                title: "MIA אמרה",
-                description: transcriptionText,
-              });
-            } else {
-              console.log('⚠️ MIA transcription was empty, not saving');
-            }
-          } else {
-            console.log('⚠️ MIA audio blob too small, skipping transcription');
-          }
-        } catch (error) {
-          console.error('❌ Error processing MIA recording:', error);
-          toast({
-            title: "שגיאה בעיבוד הקלטת MIA",
-            description: error instanceof Error ? error.message : "נסה שוב",
-            variant: "destructive"
-          });
-        } finally {
-          resolve();
-        }
-      };
-      
-      recorder.stop();
-    });
-  };
-
   const handleStartListening = async () => {
     try {
       console.log('🎤 Starting microphone...');
@@ -285,9 +187,7 @@ export function VoiceChat() {
       
       // Reset all states
       setIsListening(false);
-      setIsMiaRecording(false);
       setStep(0);
-      setMiaTabOpened(false);
       
       toast({
         title: "הפסקת האזנה",
@@ -306,34 +206,6 @@ export function VoiceChat() {
     }
   };
 
-  const getMainButtonContent = () => {
-    if (isTranscribing) {
-      return <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />;
-    }
-    
-    if (isListening) {
-      return <Square className="w-6 h-6 text-white" />;
-    }
-    
-    return <Play className="w-6 h-6 text-white" />;
-  };
-
-  const getStatusText = () => {
-    if (isTranscribing) {
-      return 'מעבד את ההודעה שלך...';
-    }
-    if (isRecording) {
-      return 'מקליט... הפסק לדבר כדי לשלוח';
-    }
-    if (isMiaSpeaking) {
-      return 'MIA מדברת...';
-    }
-    if (isListening) {
-      return 'מאזין... התחל לדבר';
-    }
-    return 'מוכן לצ׳אט עם MIA';
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0F0C29] via-[#24243e] to-[#302B63] flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-4xl flex flex-col h-[90vh]">
@@ -341,117 +213,19 @@ export function VoiceChat() {
         {/* Hidden audio element keeps MIA sound alive */}
         <audio id="miaProxy" className="hidden" />
         
-        {step === 0 && (
-          <div className="flex flex-col items-center gap-6 text-white/80">
-            <div className="text-center">
-              <h2 className="text-xl font-semibold text-white mb-2">שלב 1: פתח את MIA בטאב חדש</h2>
-              <p className="text-white/70 mb-4">לחץ על הכפתור למטה כדי לפתוח את MIA בטאב נפרד</p>
-              
-              <div className="text-sm text-white/50 space-y-2 bg-white/5 p-4 rounded-lg max-w-md">
-                <p className="font-semibold text-white/70">הוראות:</p>
-                <p>1️⃣ לחץ "פתח את MIA בטאב חדש"</p>
-                <p>2️⃣ מלא פרטים בטאב החדש ולחץ "Start"</p>
-                <p>3️⃣ חזור לטאב הזה ועבור לשלב הבא</p>
-              </div>
-            </div>
-            
-            <Button 
-              onClick={openMiaInNewTab}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 text-lg rounded-lg font-semibold"
-            >
-              <ExternalLink className="w-6 h-6 mr-2" />
-              פתח את MIA בטאב חדש
-            </Button>
-          </div>
-        )}
+        {step === 0 && <InitialStep onOpenMiaTab={openMiaInNewTab} />}
 
-        {step === 1 && (
-          <div className="flex flex-col items-center gap-6 text-white/80">
-            <div className="text-center">
-              <h2 className="text-xl font-semibold text-white mb-2">שלב 2: התחל להאזין ל-MIA</h2>
-              <p className="text-white/70 mb-4">כעת לכוד את האודיו של MIA מהטאב השני</p>
-              
-              <div className="text-sm text-white/50 space-y-2 bg-white/5 p-4 rounded-lg max-w-md">
-                <p className="font-semibold text-white/70">הוראות מפורטות:</p>
-                <p>1️⃣ לחץ "התחל להאזין ל-MIA" למטה</p>
-                <p>2️⃣ בחר "Chrome Tab" (לא Window או Entire Screen)</p>
-                <p>3️⃣ בחר את הטאב עם MIA</p>
-                <p>4️⃣ ✅ ודא שמסומן "Also share tab audio"</p>
-                <p>5️⃣ לחץ "Share"</p>
-              </div>
-            </div>
-            
-            <Button 
-              onClick={captureMiaTabAudio}
-              className="bg-green-600 hover:bg-green-700 text-white px-8 py-4 text-lg rounded-lg font-semibold"
-            >
-              <Volume2 className="w-6 h-6 mr-2" />
-              התחל להאזין ל-MIA
-            </Button>
-            
-            <div className="text-xs text-white/40 text-center max-w-md">
-              הדפדפן דורש הרשאה למניעת הקלטה נסתרת - זה נורמלי גם לטאב אחר
-            </div>
-          </div>
-        )}
+        {step === 1 && <AudioSetupStep onCaptureAudio={captureMiaTabAudio} />}
 
-        {/* Step 2: Voice Chat - SIMPLIFIED WITHOUT DRAFT */}
         {step === 2 && (
-          <>
-            {/* Success indicator */}
-            <div className="text-center mb-4">
-              <div className="flex items-center justify-center gap-4 text-green-400 mb-2">
-                <CheckCircle className="w-5 h-5" />
-                <span>מחובר בהצלחה ל-MIA! (מאזין לטאב)</span>
-              </div>
-            </div>
-
-            {/* MIA Avatar with Siri Ring */}
-            <div className="relative flex justify-center my-6">
-              <div className="relative w-24 h-24">
-                <img
-                  src="/placeholder.svg"
-                  alt="MIA"
-                  className="w-24 h-24 rounded-full object-cover border-4 border-white/20"
-                />
-                <SiriRing isActive={isMiaSpeaking} />
-              </div>
-            </div>
-
-            {/* Chat Messages - NO MORE DRAFT BUBBLE */}
-            <div className="flex-1 overflow-y-auto space-y-4 mb-6 px-2">
-              {messages.length === 0 && (
-                <div className="text-center text-white/70 py-8">
-                  <p>✅ מוכן! התחל לדבר עם MIA.</p>
-                </div>
-              )}
-              {messages.map((message) => (
-                <ChatBubble key={message.id} message={message} />
-              ))}
-            </div>
-
-            {/* Main Control Button */}
-            <div className="flex justify-center">
-              <Button
-                onClick={handleMainButtonClick}
-                disabled={isTranscribing}
-                className={`w-16 h-16 rounded-full transition-all duration-200 ${
-                  isListening
-                    ? 'bg-red-500 hover:bg-red-600'
-                    : 'bg-green-500 hover:bg-green-600'
-                } border-2 border-white/30`}
-              >
-                {getMainButtonContent()}
-              </Button>
-            </div>
-
-            {/* Status Text */}
-            <div className="text-center mt-4">
-              <p className="text-white/60 text-sm">
-                {getStatusText()}
-              </p>
-            </div>
-          </>
+          <ChatInterface
+            messages={messages}
+            isMiaSpeaking={isMiaSpeaking}
+            isListening={isListening}
+            isRecording={isRecording}
+            isTranscribing={isTranscribing}
+            onMainButtonClick={handleMainButtonClick}
+          />
         )}
       </div>
     </div>
